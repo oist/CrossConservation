@@ -1,0 +1,12 @@
+--input-file
+../cons_cons_run/input_files/rerun_input.txt
+--output-path
+../cons_cons_run/rerun_out/rerun_concon/
+--test-type
+CONCON
+--concon-reference
+EGF
+--conservation-test
+blos
+--alignment-test
+blos

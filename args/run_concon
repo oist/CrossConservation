@@ -1,0 +1,12 @@
+--input-file
+../data/input_files/egf_run_inputfile.txt
+--output-path
+~/Desktop/out/
+--test-type
+CONCON
+--concon-reference
+EGF
+--conservation-test
+blos
+--alignment-test
+blos

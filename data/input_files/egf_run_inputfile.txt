@@ -1,0 +1,17 @@
+# example file for input preparation of cross-conservation pipeline
+# file is tab separated list of inputs, with the following columns
+# 1 - type: can be LIGAND, MSTA, MSA
+# 2 - path: the PATH to the file
+# 3 - name: the NAME of LIGAND
+# 4 - pdb: the PDB ID of LIGAND
+#
+LIGAND	/<path_2_crosscons>/data/alignments/ensembl_AREG_orthologues_prot.fa	AREG	2rnl
+LIGAND	/<path_2_crosscons>/data/alignments/ensembl_BTC_orthologues_prot.fa	BTC	1ip0
+LIGAND	/<path_2_crosscons>/data/alignments/ensembl_EPGN_orthologues_prot.fa	EPGN	5wb8
+LIGAND	/<path_2_crosscons>/data/alignments/ensembl_EREG_orthologues_prot.fa	EREG	5wb7
+LIGAND	/<path_2_crosscons>/data/alignments/ensembl_HBEGF_orthologues_prot.fa	HBEGF	1mox
+LIGAND	/<path_2_crosscons>/data/alignments/ensembl_orthologues_egf_protein.fa	EGF	1ivo
+LIGAND	/<path_2_crosscons>/data/alignments/ensembl_TGFA_orthologues_prot.fa	TGFA	1xdt
+MSTA	/<path_2_crosscons>/data/alignments/MStA_ligands_scary.fasta
+MSA	/<path_2_crosscons>/data/alignments/ligands_msa.fa
+RECEPTOR	EGFR	/<path_2_crosscons>/data/alignments/ensembl_orthologues_egfr_protein.fa
