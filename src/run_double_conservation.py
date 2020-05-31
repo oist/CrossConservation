@@ -12,6 +12,7 @@ from matplotlib.ticker import FormatStrFormatter
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA as sklearnPCA
 import matplotlib.cm as cm
+import matplotlib
 
 def read_input_file(args):
     """
@@ -98,36 +99,30 @@ def con_con_comparison(args):
     fig, ax = plt.subplots()
     fig.set_size_inches(11.7, 8.27)  # A4 size
 
-    def plotter(fig, ax, alg_label, colour, pname):
+    def plotter(fig, ax, alg_label, marker, pname):
+
+        # colormap
+        cmap = matplotlib.cm.get_cmap('coolwarm')
+        normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs[alg_label]))
+        colors = [cmap(normalize(value)) for value in range(len(cs[alg_label]))]
+
         #scatter plot
-        sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label)
+        sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label, marker=marker, scatter_kws={"color":colors})
 
-        # labels
-        dpos = set()
+    plotter(fig, ax, "MSA", 'd', prot.name)
+    plotter(fig, ax, "MSTA", 's', prot.name)
 
-        def label_point(x, y, val, ax, dpos):
-            a = pd.concat({'x': x, 'y': y, 'val': val}, axis=1)
-            for i, point in a.iterrows():
-                point['x'] += 0.01
-                i = 0
-                while (point['x'], point['y']) in dpos:
-                    if i == 1:
-                        point['x'] -= 0.04
-                        point['y'] -= 0.01
-                        i = -1
-                    if i == 1 and round(point['x'], 2) == 1:
-                        point['x'] -= 0.04
-                        point['y'] -= 0.01
-                        i = -1
-                    i += 1
-                    point['x'] += 0.02
-                dpos.add((point['x'], point['y']))
-                ax.text(point['x'], point['y'], str(point['val']), fontsize=5, color=colour)
+    # labels
+    plt.ylabel("Evolutionary Conservation")
+    plt.xlabel("Ligands Alignments Conservation")
+    plt.legend(loc=4)
 
-        label_point(cs[alg_label], cs[prot.name], cs.POS, plt.gca(), dpos)
-
-    plotter(fig, ax, "MSA", "black", prot.name)
-    plotter(fig, ax, "MSTA", "red", prot.name)
+    # # colorbar
+    cmap = matplotlib.cm.get_cmap('coolwarm')
+    normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs["MSA"]))
+    cax, _ = matplotlib.colorbar.make_axes(ax, orientation="horizontal", aspect=50)
+    cbar = matplotlib.colorbar.ColorbarBase(cax, cmap=cmap, norm=normalize, orientation="horizontal")
+    plt.xlabel("AA position")
 
     # plot diagonal line
     lims = [
@@ -140,13 +135,9 @@ def con_con_comparison(args):
         ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # float representation to 2 decimals
         ax.bar(np.arange(0, 1.01, 1 / 6), [ax.get_ylim()[1]] * 7, width=[0.15] * 7, color="grey", alpha=0.3)  # backgroun bars
         plt.xticks(np.arange(0, 1.01, 1 / 6))  # ligands xticks
-    # labels
-    plt.ylabel("Evolutionary Conservation")
-    plt.xlabel("Ligands Alignments Conservation")
-    plt.legend(loc=4)
 
     # saving
-    plt.savefig("{}/{}concon.svg".format(args.output_path, prot.name), format='svg', dpi=1200)
+    plt.savefig("{}/{}concon.png".format(args.output_path, prot.name), format='png', dpi=800)
     # save text output also
     with open("{}/{}concon.csv".format(args.output_path, prot.name), "w") as outfile:
         cs.to_csv(outfile, sep="\t")
