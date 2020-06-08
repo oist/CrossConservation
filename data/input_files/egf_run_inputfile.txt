@@ -5,13 +5,13 @@
 # 3 - name: the NAME of LIGAND
 # 4 - pdb: the PDB ID of LIGAND
 #
-LIGAND	/<path_2_crosscons>/data/alignments/ensembl_AREG_orthologues_prot.fa	AREG	2rnl
-LIGAND	/<path_2_crosscons>/data/alignments/ensembl_BTC_orthologues_prot.fa	BTC	1ip0
-LIGAND	/<path_2_crosscons>/data/alignments/ensembl_EPGN_orthologues_prot.fa	EPGN	5wb8
-LIGAND	/<path_2_crosscons>/data/alignments/ensembl_EREG_orthologues_prot.fa	EREG	5wb7
-LIGAND	/<path_2_crosscons>/data/alignments/ensembl_HBEGF_orthologues_prot.fa	HBEGF	1mox
-LIGAND	/<path_2_crosscons>/data/alignments/ensembl_orthologues_egf_protein.fa	EGF	1ivo
-LIGAND	/<path_2_crosscons>/data/alignments/ensembl_TGFA_orthologues_prot.fa	TGFA	1xdt
-MSTA	/<path_2_crosscons>/data/alignments/MStA_ligands_scary.fasta
-MSA	/<path_2_crosscons>/data/alignments/ligands_msa.fa
-RECEPTOR	EGFR	/<path_2_crosscons>/data/alignments/ensembl_orthologues_egfr_protein.fa
+LIGAND	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_AREG_orthologues_prot.fa	AREG	2rnl
+LIGAND	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_BTC_orthologues_prot.fa	BTC	1ip0
+LIGAND	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_EPGN_orthologues_prot.fa	EPGN	5wb8
+LIGAND	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_EREG_orthologues_prot.fa	EREG	5wb7
+LIGAND	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_HBEGF_orthologues_prot.fa	HBEGF	1mox
+LIGAND	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_orthologues_egf_protein.fa	EGF	1ivo
+LIGAND	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_TGFA_orthologues_prot.fa	TGFA	1xdt
+MSTA	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/MStA_ligands_scary.fasta
+MSA	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ligands_msa.fa
+RECEPTOR	EGFR	/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/alignments/ensembl_orthologues_egfr_protein.fa

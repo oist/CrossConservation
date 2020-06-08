@@ -194,14 +194,14 @@ def coevol_test(args):
     msa = args.msa  # multiple sequence alignment
 
     # receptor intra coevol
-    dc.intra_coevol(receptor, "{}/{}".format(args.output_path, receptor.name))
+    dc.intra_coevol(receptor, "{}/{}".format(args.output_path, receptor.name), args.coevolution_test)
     # MSA - MSTA coevol
-    dc.intra_coevol(msa, "{}/{}".format(args.output_path, msa.name))
-    dc.intra_coevol(msta, "{}/{}".format(args.output_path, msta.name))
+    dc.intra_coevol(msa, "{}/{}".format(args.output_path, msa.name), args.coevolution_test)
+    dc.intra_coevol(msta, "{}/{}".format(args.output_path, msta.name), args.coevolution_test)
     # every ligand coevol
     for lig_prot in args.ligands.values():
-        dc.intra_coevol(lig_prot, "{}/{}".format(args.output_path, lig_prot.name))
-        dc.inter_coevol(lig_prot, receptor, "{}/{}u{}intercoevo".format(args.output_path, lig_prot.name, receptor.name))
+        dc.intra_coevol(lig_prot, "{}/{}".format(args.output_path, lig_prot.name), args.coevolution_test)
+        dc.inter_coevol(lig_prot, receptor, "{}/{}u{}intercoevo".format(args.output_path, lig_prot.name, receptor.name), args.coevolution_test)
 
 
 def pca_test(args):
@@ -353,6 +353,8 @@ def main(argv):
      blos - blosum62
      jsdw - jensen shannon divergence with window (as in concavity)""")
     parser.add_argument("--alignment-test", default="", help="type of conservation measure, used for alignment. By default, like conservation_test")
+    parser.add_argument("--coevolution-test", default="MI",
+                        help="coevolution measure. By default, MI: mutual information. can be MIp, APC corrected MI")
     args = parser.parse_args()
 
     # CREATE LOG DETAILS

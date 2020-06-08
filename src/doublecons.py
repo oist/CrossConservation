@@ -6,6 +6,9 @@ from Bio.SubsMat.MatrixInfo import blosum62
 import pandas as pd
 import numpy as np
 from collections import Counter
+import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sb
 
 class ConScores:
     """
@@ -841,7 +844,44 @@ def mutual_info(a):
 
     return mi
 
-def intra_coevol(prot, outpath):
+def plot_coevol(ori_df, out_path):
+    # plotting
+
+    df = ori_df.T
+    fig, ax = plt.subplots()
+    fig.set_size_inches(11.7, 8.27)  # A4 size
+    labels = list(df.index)
+    #mask
+    mask = np.tril(np.ones(df.shape)).astype(np.bool)
+    mask = np.invert(mask)
+    # plot
+    hm = sb.heatmap(df, cmap='viridis', mask=mask)
+
+    # saving
+    plt.savefig(out_path, format='png', dpi=800)
+    plt.clf()
+    # save text output also
+
+def pseudobond_top5(ori_df, out_path):
+    """
+    creates a file that could be run with chimera to generate pseudo bonds
+    :param ori_df:
+    :param out_path:
+    :return:
+    """
+    out = []
+    template = "#0.3:{}@CA\t#0.1:{}@CA\torange\t{}"
+
+    for index,row in ori_df.iterrows():
+        ligres = row.iloc[1][:-1]
+        recres = row.iloc[2][:-1]
+        score = row.iloc[0]
+        out.append(template.format(ligres, recres, score))
+
+    open(out_path,"w").write("\n".join(out))
+
+
+def intra_coevol(prot, outpath, test):
     """
     intra protein coevolution
     :param msa:
@@ -876,19 +916,24 @@ def intra_coevol(prot, outpath):
             MI = mutual_info(test)
             MI = round(MI, 2)
             miatrix[i][j] = MI
-            top5list.append((MI, referenced_pos[i], referenced_pos[j]))
-
+            miatrix[j][i] = MI
+    if test == "MIp":
+        miatrix = correct_apc(miatrix)
     mitab = pd.DataFrame(miatrix, columns=referenced_pos, index=referenced_pos)
 
+    for i in range(ref_len-1):
+        for j in range(i+1, ref_len):
+            top5list.append((miatrix[i][j], referenced_pos[i], referenced_pos[j]))
     top5tab = pd.DataFrame(sorted(top5list, reverse=True)[:int(len(top5list) * 0.10)])
 
     with open(outpath + ".tsv", "w") as outfile:
         mitab.to_csv(outfile, sep="\t")
-
+    plot_coevol(mitab, outpath + ".png")
     with open(outpath + "_top5.tsv", "w") as outfile:
         top5tab.to_csv(outfile, sep="\t")
+    pseudobond_top5(top5tab,outpath + "_top5chimera.txt")
 
-def inter_coevol(p1, p2, outpath):
+def inter_coevol(p1, p2, outpath, test):
     """
     intra protein coevolution
     :param msa:
@@ -927,14 +972,35 @@ def inter_coevol(p1, p2, outpath):
             MI = mutual_info(test)
             MI = round(MI, 2)
             miatrix[i][j] = MI
-            top5list.append((MI, referenced1_pos[i], referenced2_pos[j]))
+            miatrix[j][i] = MI
 
+    if test == "MIp":
+        miatrix = correct_apc(miatrix)
     mitab = pd.DataFrame(miatrix, columns=referenced2_pos, index=referenced1_pos)
 
+    for i in range(r1_len-1):
+        for j in range(r2_len):
+            top5list.append((miatrix[i][j], referenced1_pos[i], referenced2_pos[j]))
     top5tab = pd.DataFrame(sorted(top5list, reverse=True)[:int(len(top5list) * 0.10)])
 
     with open(outpath + ".tsv", "w") as outfile:
         mitab.to_csv(outfile, sep="\t")
-
+    plot_coevol(mitab, outpath + ".png")
     with open(outpath + "_top5.tsv", "w") as outfile:
         top5tab.to_csv(outfile, sep="\t")
+    pseudobond_top5(top5tab,outpath + "_top5chimera.txt")
+
+
+def correct_apc(M):
+    """
+    subtracts the average product to the MI value
+    APC = (MI(a,*) * MI(*,b))/ MI(*,*)
+    :param M:
+    :return:
+    """
+    all_mean = np.average(M,axis=None)
+    col_mean = np.average(M,axis=1)
+    APC = [[col_mean[i] * col_mean[j] / all_mean for i in range(len(M))] for j in range(len(M))]
+    Mmod = M-APC
+
+    return Mmod
