@@ -174,6 +174,7 @@ def dir_prediction(args):
     cs.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(cs))])
 
     # plotting
+    plt.rcParams.update({'font.size': 16})
     fig, ax = plt.subplots()
     fig.set_size_inches(11.7, 8.27)  # A4 size
 
@@ -185,11 +186,11 @@ def dir_prediction(args):
         colors = [cmap(normalize(value)) for value in range(len(cs[alg_label]))]
 
         #scatter plot
-        sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label, marker=marker, scatter_kws={"color":colors})
+        sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label, marker=marker, scatter_kws={"color":colors, "alpha": 0.5, "linewidth":0.5, "edgecolor":"black"})
         # labels
         dpos = set()
 
-        def label_point(x, y, val, ax, dpos):
+        def label_point(x, y, val, ax, dpos, setpos=set()):
             a = pd.concat({'x': x, 'y': y, 'val': val}, axis=1)
             for i, point in a.iterrows():
                 # point['x'] += 0.01
@@ -205,11 +206,13 @@ def dir_prediction(args):
                 #         i = -1
                 #     i += 1
                 #     point['x'] += 0.02
-                dpos.add((point['x'], point['y']))
-                ax.text(point['x'], point['y'], str(point['val']), fontsize=5)
+                if not setpos or any([str(pos) in point['val'] for pos in setpos]):
+                    dpos.add((point['x'], point['y']))
+                    ax.text(point['x'], point['y'], str(point['val']), fontsize=12)
 
-        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos)
-        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos)
+        setpos = {32,46,48,50}
+        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
+        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
 
     plotter(fig, ax, "MSA", 'd', "EVO cons MSA")
     plotter(fig, ax, "MSTA", 's', "EVO cons MSTA")
@@ -237,6 +240,10 @@ def dir_prediction(args):
         ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # float representation to 2 decimals
         ax.bar(np.arange(0, 1.01, 1 / 6), [ax.get_ylim()[1]] * 7, width=[0.15] * 7, color="grey", alpha=0.3)  # backgroun bars
         plt.xticks(np.arange(0, 1.01, 1 / 6))  # ligands xticks
+
+    # remove top and right
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
 
     # saving
     plt.savefig("{}/{}dirp.png".format(args.output_path, prot.name), format='png', dpi=800)

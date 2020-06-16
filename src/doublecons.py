@@ -112,7 +112,7 @@ class ConScores:
                             bloscore = blosum62[(res, reference_res)]
                         this_score += bloscore
                 # print(", ".join([reference_res, "\t"] + res_list + [str(round(this_freq,2))]))
-                out.append(np.round(((this_score / norm) - mb )/(Mb-mb), 1))
+                out.append(np.round(((this_score / norm) - mb )/(Mb-mb), 2))
 
         return out
 
