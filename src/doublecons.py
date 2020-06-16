@@ -10,6 +10,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sb
 
+def make_blos62_mp():
+    # blosum 62 marginal probabilities, from capra python code
+    sc = [0.078, 0.051, 0.041, 0.052, 0.024, 0.034, 0.059, 0.083, 0.025, 0.062, 0.092, 0.056, 0.024, 0.044, 0.043,
+          0.059, 0.055, 0.014, 0.034, 0.072]
+    aa = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V']
+    return {aa[i]: sc[i] for i in range(len(sc))}
+
 class ConScores:
     """
     class containing conservation scores.
@@ -20,27 +27,30 @@ class ConScores:
 
     # general variab
 
-    # blosum 62 marginal probabilities
-    blos62_mp = {'A': 0.074,
-                 'C': 0.025,
-                 'D': 0.054,
-                 'E': 0.054,
-                 'F': 0.047,
-                 'G': 0.074,
-                 'H': 0.026,
-                 'I': 0.068,
-                 'K': 0.058,
-                 'L': 0.099,
-                 'M': 0.025,
-                 'N': 0.045,
-                 'P': 0.039,
-                 'Q': 0.034,
-                 'R': 0.052,
-                 'S': 0.057,
-                 'T': 0.051,
-                 'V': 0.073,
-                 'W': 0.013,
-                 'Y': 0.032}
+    blos62_mp = make_blos62_mp()
+
+
+    #
+    # old_blos62_mp = {'A': 0.074,
+    #              'C': 0.025,
+    #              'D': 0.054,
+    #              'E': 0.054,
+    #              'F': 0.047,
+    #              'G': 0.074,
+    #              'H': 0.026,
+    #              'I': 0.068,
+    #              'K': 0.058,
+    #              'L': 0.099,
+    #              'M': 0.025,
+    #              'N': 0.045,
+    #              'P': 0.039,
+    #              'Q': 0.034,
+    #              'R': 0.052,
+    #              'S': 0.057,
+    #              'T': 0.051,
+    #              'V': 0.073,
+    #              'W': 0.013,
+    #              'Y': 0.032}
 
     # scoring methods
 
@@ -70,8 +80,45 @@ class ConScores:
 
         return out
 
+    # this is the new blosum score, normalized by min and max in the matrix
     @staticmethod
     def blosum(msa, ref):
+        """
+        blosum score: sum of BLOSUM(ref, L) for L in other ligands.
+        Normalized by the number of sums and min/max blos62 score
+        :param msa:
+        :param ref:
+        :return:
+        """
+        Mb,mb = max(blosum62.values()), min(blosum62.values())
+
+        out = []
+        reflen = len(msa.loc[ref])
+
+        for i in range(reflen):
+            norm = 0
+            res_list = list(msa.iloc[:, i])
+            reference_res = str(msa.iloc[:, i].loc[ref])
+
+            if reference_res not in "-.":
+                this_score = - blosum62[(reference_res, reference_res)]  # starts in debt to cover self reference hit
+                for res in res_list:
+                    if res not in "-.":
+                        norm += 1
+                        # exception to catch stupid triangular matrix
+                        try:
+                            bloscore = blosum62[(reference_res, res)]
+                        except KeyError:
+                            bloscore = blosum62[(res, reference_res)]
+                        this_score += bloscore
+                # print(", ".join([reference_res, "\t"] + res_list + [str(round(this_freq,2))]))
+                out.append(np.round(((this_score / norm) - mb )/(Mb-mb), 1))
+
+        return out
+
+    # this is the old blosum score, kept for reference
+    @staticmethod
+    def old_blosum(msa, ref):
         """
         blosum score: sum of BLOSUM(ref, L) for L in other ligands.
         Normalized by the number of sums
@@ -109,7 +156,7 @@ class ConScores:
         """
         Jensen shannon divergence with window of residues.
         as in https://academic.oup.com/bioinformatics/article/23/15/1875/203579
-        used by consurf!
+        used by consurf! fake!
 
         RE = sum aa Pc(aa) * log (Pc(aa) / q(aa))
 
@@ -168,8 +215,12 @@ class ConScores:
 
             # compute q and r dictionaries
             q = ConScores.blos62_mp  # dict of "aa" -> blos62 frequency
-            r = {x: (lamb*Pc[x]) + ((1-lamb)*q[x]) for x in Pc}  # dict of "aa" -> r score
+            # add zeroes in Pc
+            for aa in q:
+                if aa not in Pc:
+                    Pc[aa] = 0.0
 
+            r = {x: (lamb*Pc[x]) + ((1-lamb)*q[x]) for x in Pc}  # dict of "aa" -> r score
             # add aa to r and Pc if not present with (almost) zero
             # for k in q:
             #     if k not in r:
@@ -177,28 +228,34 @@ class ConScores:
             #     if k not in Pc:
             #         Pc[k] = 10**-6
 
+            # modified
             # RE score with case for zero division inside log (it tends to 1)
-            def RE(d1, d2):
-                o = []
-                for x in set(d1.keys()) & set(d2.keys()):
-                    try:
-                        v = d1[x]*(np.log(d1[x]/d2[x]))
-                    except ZeroDivisionError:
-                        v = d1[x]
-                    o.append(v)
-                return sum(o)
+            # def RE(d1, d2):
+            #     d = 0
+            #     for x in set(d1.keys()) & set(d2.keys()):
+            #         try:
+            #             v = d1[x]*(np.log(d1[x]/d2[x]))
+            #         except ZeroDivisionError:
+            #             v = d1[x]
+            #         o.append(v)
+            #     return sum(o)
+            d = 0
+            for aa in Pc:
+                if r[aa] != 0.0:
+                    if Pc[aa] == 0.0:
+                        d += q[aa] * np.log2(q[aa] / r[aa])
+                    elif q[aa] == 0.0:
+                        d += Pc[aa] * np.log2(Pc[aa] / r[aa])
+                    else:
+                        d += Pc[aa] * np.log2(Pc[aa] / r[aa]) + q[aa] * np.log2(q[aa] / r[aa])
 
-            # print(Pc)
-            # print(sum(Pc.values()))
-            # print(q)
-            # print(sum(q.values()))
-            # print(r)
-            # print(sum(r.values()))
-            # finally compute score
-            DC = (lamb * RE(Pc, r)) + ((1 - lamb) * RE(q, r))
+            # d /= 2 * math.log(len(fc))
+            d /= 2
+
             # add gap penalty
-            DC = DC * (1 - gap_pen)
-            return DC
+            #check here for gap penalty
+            d = d * (1 - gap_pen)
+            return d
 
         #######################
 
@@ -972,7 +1029,6 @@ def inter_coevol(p1, p2, outpath, test):
             MI = mutual_info(test)
             MI = round(MI, 2)
             miatrix[i][j] = MI
-            miatrix[j][i] = MI
 
     if test == "MIp":
         miatrix = correct_apc(miatrix)

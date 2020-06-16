@@ -142,9 +142,132 @@ def con_con_comparison(args):
     with open("{}/{}concon.csv".format(args.output_path, prot.name), "w") as outfile:
         cs.to_csv(outfile, sep="\t")
 
+def dir_prediction(args):
+    """
+    Divergence Inducing Residue Prediction
+    Basically like cross-conservation but averaging over all paralogs and correcting for coevolution
+
+    :param args:
+    :return:
+    """
+    rp = args.concon_reference          # reference ligand name
+    prot = args.ligands[rp]             # reference ligand
+    seq = prot.get_ref_seq()            # reference ligand sequence
+    msta = args.msta                    # multiple structure alignment
+    msa = args.msa                      # multiple sequence alignment
+    contest = args.conservation_test    # conservation test type
+    algtest = args.alignment_test       # conservation for ligand alignment type
+
+    # data preparation
+    cs = pd.DataFrame()
+    # add separating variable when it is 7 lumps of data
+    sepvar = 0
+    if algtest == "id":
+        sepvar = 0.04
+    cs["MSA"] = [round(x, 2) + sepvar for x in msa.get_cons_scores(algtest)]
+    cs["MSTA"] = [round(x, 2) - sepvar for x in msta.get_cons_scores(algtest)]
+    relative_conservation = ligand_table(args)
+    # cs[prot.name] = prot.get_cons_scores(contest)
+    # now I need one evo cons from MSA alignment average and one from MSTA alignment average
+    cs["EVO cons MSA"] = average_cons(relative_conservation,"MSA")
+    cs["EVO cons MSTA"] = average_cons(relative_conservation,"MSTA")
+    cs.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(cs))])
+
+    # plotting
+    fig, ax = plt.subplots()
+    fig.set_size_inches(11.7, 8.27)  # A4 size
+
+    def plotter(fig, ax, alg_label, marker, pname):
+
+        # colormap
+        cmap = matplotlib.cm.get_cmap('coolwarm')
+        normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs[alg_label]))
+        colors = [cmap(normalize(value)) for value in range(len(cs[alg_label]))]
+
+        #scatter plot
+        sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label, marker=marker, scatter_kws={"color":colors})
+        # labels
+        dpos = set()
+
+        def label_point(x, y, val, ax, dpos):
+            a = pd.concat({'x': x, 'y': y, 'val': val}, axis=1)
+            for i, point in a.iterrows():
+                # point['x'] += 0.01
+                # i = 0
+                # while (point['x'], point['y']) in dpos:
+                #     if i == 1:
+                #         point['x'] -= 0.04
+                #         point['y'] -= 0.01
+                #         i = -1
+                #     if i == 1 and round(point['x'], 2) == 1:
+                #         point['x'] -= 0.04
+                #         point['y'] -= 0.01
+                #         i = -1
+                #     i += 1
+                #     point['x'] += 0.02
+                dpos.add((point['x'], point['y']))
+                ax.text(point['x'], point['y'], str(point['val']), fontsize=5)
+
+        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos)
+        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos)
+
+    plotter(fig, ax, "MSA", 'd', "EVO cons MSA")
+    plotter(fig, ax, "MSTA", 's', "EVO cons MSTA")
+
+    # labels
+    plt.ylabel("Average Evolutionary Conservation")
+    plt.xlabel("Ligands Alignments Conservation")
+    plt.legend(loc=4)
+
+    # # colorbar
+    cmap = matplotlib.cm.get_cmap('coolwarm')
+    normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs["MSA"]))
+    cax, _ = matplotlib.colorbar.make_axes(ax, orientation="horizontal", aspect=50)
+    cbar = matplotlib.colorbar.ColorbarBase(cax, cmap=cmap, norm=normalize, orientation="horizontal")
+    plt.xlabel("AA position")
+
+    # plot diagonal line
+    lims = [
+        np.min([ax.get_xlim(), ax.get_ylim()]),
+        np.max([ax.get_xlim(), ax.get_ylim()]),
+        ]
+    ax.plot(lims, lims, ls="--", c=".3")
+    # in case it is 7 lumps of X axis
+    if algtest == "id":  # it is 7 blocks
+        ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # float representation to 2 decimals
+        ax.bar(np.arange(0, 1.01, 1 / 6), [ax.get_ylim()[1]] * 7, width=[0.15] * 7, color="grey", alpha=0.3)  # backgroun bars
+        plt.xticks(np.arange(0, 1.01, 1 / 6))  # ligands xticks
+
+    # saving
+    plt.savefig("{}/{}dirp.png".format(args.output_path, prot.name), format='png', dpi=800)
+
+    # save text output also but add average
+    # average MSA/MSTA then distance with
+    cs["avg DIR score"] = calculate_dirp_score(cs,["MSA","EVO cons MSA"],["MSTA","EVO cons MSTA"])
+    with open("{}/{}dirp.csv".format(args.output_path, prot.name), "w") as outfile:
+        cs.to_csv(outfile, sep="\t")
+
+def calculate_dirp_score(df, msa_id=["MSA","EVO cons MSA"], msta_id=["MSTA","EVO cons MSTA"]):
+    """average msa and msta score (distance from diagonal)"""
+
+    diag = lambda x,y: np.abs(x-y) / np.sqrt(2)
+    MSA_score = diag(df[msa_id[0]],df[msa_id[1]])
+    MSTA_score = diag(df[msta_id[0]],df[msta_id[1]])
+    return np.mean([MSA_score,MSTA_score], axis=0)
+
+
+def average_cons(d,alg_type):
+    """returns the average conservation from the dictionary of relative scores"""
+    l = []
+    for k in d:
+        if alg_type in k:
+            a = [np.nan if x == "-" else float(x) for x in d[k]]
+            l.append(a)
+    mean_out = np.nanmean(l,axis=0)
+    return mean_out
+
 def ligand_table(args):
     """
-
     :param args:
     :return:
     """
@@ -183,6 +306,7 @@ def ligand_table(args):
     with open("{}/ligand_table.csv".format(args.output_path), "w") as outfile:
         cs.to_csv(outfile, sep="\t")
 
+    return rel_cons
 
 def coevol_test(args):
 
@@ -344,6 +468,7 @@ def main(argv):
     parser.add_argument("--output-path", required=True, help="path to output folder, will be created if not ex")
     parser.add_argument("--test-type", required=True, help="""The type of test:
      CONCON - cross conservation graph,
+     DIRP - average multiple concon, or Divergence Inducing Residue Prediction,
      LTABLE - ligand positions to reference table
      COEVOL - coevolution test between ligands and receptor
      PCA    - PCA done from the conservation scores of ligand table. needs ligtable as input""")
@@ -383,12 +508,15 @@ def main(argv):
     if args.test_type == "CONCON":
         con_con_comparison(args)
 
-    # LIGAND TABLE
-    if args.test_type == "LTABLE":
-        ligand_table(args)
+    # DIRP
+    if args.test_type == "DIRP":
+        dir_prediction(args)
 
     if args.test_type == "COEVOL":
         coevol_test(args)
+
+    if args.test_type == "LIGTAB":
+        _ = ligand_table(args)
 
     # PCA from ligand table
     if args.test_type == "PCA":
