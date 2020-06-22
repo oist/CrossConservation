@@ -159,18 +159,34 @@ def dir_prediction(args):
     algtest = args.alignment_test       # conservation for ligand alignment type
 
     # data preparation
-    cs = pd.DataFrame()
+    cs = {}
     # add separating variable when it is 7 lumps of data
     sepvar = 0
     if algtest == "id":
         sepvar = 0.04
+
+    # ligands alignment scorings
     cs["MSA"] = [round(x, 2) + sepvar for x in msa.get_cons_scores(algtest)]
     cs["MSTA"] = [round(x, 2) - sepvar for x in msta.get_cons_scores(algtest)]
-    relative_conservation = ligand_table(args)
     # cs[prot.name] = prot.get_cons_scores(contest)
+    # evolutionary alignment average scoring
     # now I need one evo cons from MSA alignment average and one from MSTA alignment average
-    cs["EVO cons MSA"] = average_cons(relative_conservation,"MSA")
-    cs["EVO cons MSTA"] = average_cons(relative_conservation,"MSTA")
+    relative_conservation = ligand_table(args)
+    cs["EVO cons MSA"] = average_score(relative_conservation,"MSA")
+    cs["EVO cons MSTA"] = average_score(relative_conservation,"MSTA")
+
+    # now let's do the coevolution score
+    rel_intra_coevol, rel_inter_coevol = coevol_test(args)
+    cs["COEVO ligands MSA"] = average_score(rel_intra_coevol,"MSA")
+    cs["COEVO ligands MSTA"] = average_score(rel_intra_coevol,"MSTA")
+    cs["COEVO receptor MSA"] = average_score(rel_inter_coevol,"MSA")
+    cs["COEVO receptor MSTA"] = average_score(rel_inter_coevol,"MSTA")
+
+    # average MSA/MSTA then distance with
+    cs["avg DIR score"] = calculate_dirp_score(cs,["MSA","EVO cons MSA"],["MSTA","EVO cons MSTA"])
+
+    cs = pd.DataFrame(cs)
+    # insert relative positions
     cs.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(cs))])
 
     # plotting
@@ -249,21 +265,31 @@ def dir_prediction(args):
     plt.savefig("{}/{}dirp.png".format(args.output_path, prot.name), format='png', dpi=800)
 
     # save text output also but add average
-    # average MSA/MSTA then distance with
-    cs["avg DIR score"] = calculate_dirp_score(cs,["MSA","EVO cons MSA"],["MSTA","EVO cons MSTA"])
     with open("{}/{}dirp.csv".format(args.output_path, prot.name), "w") as outfile:
         cs.to_csv(outfile, sep="\t")
+    # save also sorted version
+    sorted_cs = cs.sort_values("avg DIR score", ascending=False)
+    with open("{}/{}dirp_sorted.csv".format(args.output_path, prot.name), "w") as outfile:
+        sorted_cs.to_csv(outfile, sep="\t")
 
 def calculate_dirp_score(df, msa_id=["MSA","EVO cons MSA"], msta_id=["MSTA","EVO cons MSTA"]):
-    """average msa and msta score (distance from diagonal)"""
+    """average msa and msta score (distance from diagonal) v0.1"""
 
-    diag = lambda x,y: np.abs(x-y) / np.sqrt(2)
+    diag = lambda x,y: np.abs(x-y) * np.sqrt(2) / 2
     MSA_score = diag(df[msa_id[0]],df[msa_id[1]])
     MSTA_score = diag(df[msta_id[0]],df[msta_id[1]])
-    return np.mean([MSA_score,MSTA_score], axis=0)
+    return np.mean([MSA_score, MSTA_score], axis=0)
+
+def calculate_dirp_score_new(df, msa_id=["MSA","EVO cons MSA"], msta_id=["MSTA","EVO cons MSTA"]):
+    """average msa and msta score combining conservation and coevolution, v1.0"""
+
+    diag = lambda x,y: np.abs(x-y) * np.sqrt(2) / 2
+    MSA_score = diag(df[msa_id[0]],df[msa_id[1]])
+    MSTA_score = diag(df[msta_id[0]],df[msta_id[1]])
+    return np.mean([MSA_score, MSTA_score], axis=0)
 
 
-def average_cons(d,alg_type):
+def average_score(d,alg_type):
     """returns the average conservation from the dictionary of relative scores"""
     l = []
     for k in d:
@@ -287,7 +313,7 @@ def ligand_table(args):
     algtest = args.alignment_test       # ligand alignment test type
 
     # data preparation
-    cs = pd.DataFrame()
+    cs = {}
     rel_cons = {}  # relative conservation is stored here
 
     # add referenced positions
@@ -307,6 +333,8 @@ def ligand_table(args):
     cs[prot.name] = prot.get_cons_scores(contest)
     for n in rel_cons:
         cs[n+"_cons_{}".format(contest)] = rel_cons[n]
+
+    cs = pd.DataFrame(cs)
     # add egf pos
     cs.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(cs))])
 
@@ -316,24 +344,71 @@ def ligand_table(args):
     return rel_cons
 
 def coevol_test(args):
-
+    """
+    has to return two dictionaries, intra and inter coevolution
+    as key msa_ligand, as values, an array based on reference with the max coevolution score
+    :param args:
+    :return:
+    """
     # preparation
     rp = args.concon_reference          # reference ligand name
     prot = args.ligands[rp]             # reference ligand
+    seq = prot.get_ref_seq()            # reference sequence
     receptor = args.receptor            # receptor MSA
     msta = args.msta  # multiple structure alignment
     msa = args.msa  # multiple sequence alignment
+    coevo_test = args.coevolution_test
+    coevol_output = args.output_path + "/coevolution/"
+    if not os.path.exists(coevol_output):
+        os.makedirs(coevol_output)
+    logging.warning("running coevolution module")
 
     # receptor intra coevol
-    dc.intra_coevol(receptor, "{}/{}".format(args.output_path, receptor.name), args.coevolution_test)
+    _ = dc.intra_coevol(receptor, "{}/{}".format(coevol_output, receptor.name), coevo_test)
+    # the following was removed cause not used in coevol measure
     # MSA - MSTA coevol
-    dc.intra_coevol(msa, "{}/{}".format(args.output_path, msa.name), args.coevolution_test)
-    dc.intra_coevol(msta, "{}/{}".format(args.output_path, msta.name), args.coevolution_test)
+    #dc.intra_coevol(msa, "{}/{}".format(args.output_path, msa.name), args.coevolution_test)
+    #dc.intra_coevol(msta, "{}/{}".format(args.output_path, msta.name), args.coevolution_test)
     # every ligand coevol
-    for lig_prot in args.ligands.values():
-        dc.intra_coevol(lig_prot, "{}/{}".format(args.output_path, lig_prot.name), args.coevolution_test)
-        dc.inter_coevol(lig_prot, receptor, "{}/{}u{}intercoevo".format(args.output_path, lig_prot.name, receptor.name), args.coevolution_test)
+    # now try to combine all ligands together using msa and msta
+    # all ligands
+    intra_rc,inter_rc = {},{}
+    report_intra, report_inter = {},{}
+    for m in [msa, msta]:
+        for n in m.get_names():
+            logging.warning("processing {}".format(n))
+            assert n in args.ligands, "{} not found in ligands list: {}".format(n, args.ligands.keys())
+            this_ligand = args.ligands[n]
+            this_ligand_intra_score = dc.intra_coevol(this_ligand, "{}/{}".format(coevol_output, this_ligand.name), coevo_test)
+            this_ligand_inter_score = dc.inter_coevol(this_ligand, receptor, "{}/{}u{}intercoevo".format(coevol_output, this_ligand.name, receptor.name), coevo_test)
+            this_name = "{}_{}".format(m.name, n)
+            report_intra[this_name] = m.get_referenced_positions(n)
+            report_inter[this_name] = m.get_referenced_positions(n)
+            intra_rc[this_name] = m.get_referenced_scores(n, this_ligand, this_ligand_intra_score)
+            inter_rc[this_name] = m.get_referenced_scores(n, this_ligand, this_ligand_inter_score)
 
+    report_intra["MSA"] = dc.intra_coevol(msa,"{}/{}".format(coevol_output, msa.name), coevo_test)
+    report_intra["MSTA"] = dc.intra_coevol(msta, "{}/{}".format(coevol_output, msta.name), coevo_test)
+    report_intra[prot.name] = dc.intra_coevol(prot, "{}/intra_{}".format(args.output_path, prot.name),
+                                                 args.coevolution_test)
+    report_inter[prot.name] = dc.inter_coevol(prot, receptor, "{}/inter_{}".format(args.output_path, prot.name), coevo_test)
+    for n in intra_rc:
+        report_intra[n+"_coevol_{}".format(coevo_test)] = intra_rc[n]
+        report_inter[n+"_coevol_{}".format(coevo_test)] = inter_rc[n]
+    # make df
+    report_intra_df = pd.DataFrame(report_intra)
+    report_inter_df = pd.DataFrame(report_inter)
+    # add egf pos
+    report_intra_df.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(report_intra_df))])
+    report_inter_df.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(report_inter_df))])
+
+    # save reports
+    with open("{}/intra_coevol_report.csv".format(args.output_path), "w") as outfile:
+        report_intra_df.to_csv(outfile, sep="\t")
+    with open("{}/inter_coevol_report.csv".format(args.output_path), "w") as outfile:
+        report_inter_df.to_csv(outfile, sep="\t")
+
+    return intra_rc,inter_rc
 
 def pca_test(args):
     """

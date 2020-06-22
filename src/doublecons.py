@@ -9,6 +9,8 @@ from collections import Counter
 import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sb
+import random
+
 
 def make_blos62_mp():
     # blosum 62 marginal probabilities, from capra python code
@@ -828,7 +830,7 @@ class MSA(object):
 
     def get_referenced_scores(self, name, prot, score_arr):
         """
-        returns a list of conservation scores ordered as in reference
+        returns a list of scores ordered as in reference
         This is used in reference ordered table print
         There are two position to be translated.
         First, the translation between MSA reference and MSA name are found with self.get_referenced_position
@@ -877,10 +879,13 @@ class MSA(object):
 def create_msa(f):
     """created a msa pandas dataframe from an open file f"""
     prsr = SeqIO.parse(f, "fasta")
-    df = pd.DataFrame()
+    df_dic = {"name":[]}
     for fas in prsr:
-        df = df.append(pd.Series(list(fas.seq), index=range(1, len(fas.seq) + 1), name=fas.id))
-    return df
+        seql = list(fas.seq)
+        df_dic["name"].append(fas.id)
+        for idx in range(1,len(fas.seq)+1):
+            df_dic[idx] = df_dic.get(idx,[]) + [seql[idx-1]]
+    return pd.DataFrame(df_dic,index=df_dic.pop("name"))
 
 def mutual_info(a):
     """ from array of coupled positions, returns MI score:
@@ -915,8 +920,8 @@ def plot_coevol(ori_df, out_path):
     hm = sb.heatmap(df, cmap='viridis', mask=mask)
 
     # saving
-    plt.savefig(out_path, format='png', dpi=800)
-    plt.clf()
+    plt.savefig(out_path, format='png', dpi=400)
+    plt.close()
     # save text output also
 
 def pseudobond_top5(ori_df, out_path):
@@ -941,6 +946,10 @@ def pseudobond_top5(ori_df, out_path):
 def intra_coevol(prot, outpath, test):
     """
     intra protein coevolution
+    MI apc corrected:
+    https://academic.oup.com/bioinformatics/article/25/9/1125/204722
+
+    returns the max value of each position array
     :param msa:
     :param org:
     :param out:
@@ -951,6 +960,7 @@ def intra_coevol(prot, outpath, test):
     referenced_pos = prot.get_referenced_pos()
     ref_len = len(ref_pos)
     msa = prot.get_msa()
+    msa_dic = {ipos: msa.iloc[:, ipos].to_dict() for ipos in ref_pos}
     org_list = prot.get_names()
 
     miatrix = np.zeros([ref_len, ref_len])
@@ -958,16 +968,21 @@ def intra_coevol(prot, outpath, test):
 
     for i in range(ref_len - 1):
         ipos = ref_pos[i]
-        icol = msa.iloc[:, ipos]
+        icol = msa_dic[ipos]
         for j in range(i + 1, ref_len):
             test = []
             jpos = ref_pos[j]
-            jcol = msa.iloc[:, jpos]
+            jcol = msa_dic[jpos]
 
             # find couples
             for org in org_list:
-                org_ires = list(icol[org])[0]
-                org_jres = list(jcol[org])[0]
+                org_ires = icol[org]
+                org_jres = jcol[org]
+                # to fix, handle multiple sequences. ATM: to_dict kills multiple col names!! AT YOUR OWN RISK!
+                # if type(org_ires) == pd.Series:
+                #     org_ires = random.choice(list(org_ires))
+                # if type(org_jres) == pd.Series:
+                #     org_jres = random.choice(list(org_ires))
                 if org_ires not in ".-" and org_jres not in ".-":
                     test.append((org_ires,org_jres))
             MI = mutual_info(test)
@@ -990,9 +1005,16 @@ def intra_coevol(prot, outpath, test):
         top5tab.to_csv(outfile, sep="\t")
     pseudobond_top5(top5tab,outpath + "_top5chimera.txt")
 
+    return list(mitab.max())
+
+
 def inter_coevol(p1, p2, outpath, test):
     """
     intra protein coevolution
+    MI apc corrected
+    https://academic.oup.com/bioinformatics/article/25/9/1125/204722
+
+    returns the max value of each position array, on p1 reference
     :param msa:
     :param org:
     :param out:
@@ -1006,7 +1028,9 @@ def inter_coevol(p1, p2, outpath, test):
     r1_len = len(r1_pos)
     r2_len = len(r2_pos)
     msa1 = p1.get_msa()
+    msa1_dic = {ipos: msa1.iloc[:,ipos].to_dict() for ipos in r1_pos}
     msa2 = p2.get_msa()
+    msa2_dic = {jpos: msa2.iloc[:,jpos].to_dict() for jpos in r2_pos}
     org_set = set(p1.get_names()) & set(p2.get_names())
 
     miatrix = np.zeros([r1_len, r2_len])
@@ -1014,16 +1038,16 @@ def inter_coevol(p1, p2, outpath, test):
 
     for i in range(r1_len):
         ipos = r1_pos[i]
-        icol = msa1.iloc[:, ipos]
+        icol = msa1_dic[ipos]
         for j in range(r2_len):
             test = []
             jpos = r2_pos[j]
-            jcol = msa2.iloc[:, jpos]
+            jcol = msa2_dic[jpos]
 
             # find couples
             for org in org_set:
-                org_ires = list(icol[org])[0]
-                org_jres = list(jcol[org])[0]
+                org_ires = icol[org]
+                org_jres = jcol[org]
                 if org_ires not in ".-" and org_jres not in ".-":
                     test.append((org_ires,org_jres))
             MI = mutual_info(test)
@@ -1034,7 +1058,7 @@ def inter_coevol(p1, p2, outpath, test):
         miatrix = correct_apc(miatrix)
     mitab = pd.DataFrame(miatrix, columns=referenced2_pos, index=referenced1_pos)
 
-    for i in range(r1_len-1):
+    for i in range(r1_len):
         for j in range(r2_len):
             top5list.append((miatrix[i][j], referenced1_pos[i], referenced2_pos[j]))
     top5tab = pd.DataFrame(sorted(top5list, reverse=True)[:int(len(top5list) * 0.10)])
@@ -1044,8 +1068,9 @@ def inter_coevol(p1, p2, outpath, test):
     plot_coevol(mitab, outpath + ".png")
     with open(outpath + "_top5.tsv", "w") as outfile:
         top5tab.to_csv(outfile, sep="\t")
-    pseudobond_top5(top5tab,outpath + "_top5chimera.txt")
+    pseudobond_top5(top5tab, outpath + "_top5chimera.txt")
 
+    return list(mitab.max(axis=1))
 
 def correct_apc(M):
     """
