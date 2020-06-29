@@ -342,10 +342,13 @@ def makeplots(cs, args):
     # plt.savefig("{}/{}_dirp.png".format(args.output_path, prot.name), format='png', dpi=800)
 
     # save text output also but add average
+    #index plus one
+    cs.index = cs.index + 1
     with open("{}/DIRpred.csv".format(args.output_path), "w") as outfile:
         cs.to_csv(outfile)
     # save also sorted version
     sorted_cs = cs.sort_values("avg DIR score", ascending=False)
+    sorted_cs.index = [i for i in range(1,len(sorted_cs.index)+1)]
     with open("{}/DIRpred_sorted.csv".format(args.output_path), "w") as outfile:
         sorted_cs.to_csv(outfile)
 
