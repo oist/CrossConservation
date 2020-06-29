@@ -391,7 +391,7 @@ def calculate_dirp_score(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
         MSTA_score.append(sum(msta_partial_score))
         partial_score.append((msa_partial_score, msta_partial_score))
 
-    return np.mean([MSA_score, MSTA_score], axis=0), partial_score
+    return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
 
 
 def average_score(d,alg_type):
@@ -401,7 +401,7 @@ def average_score(d,alg_type):
         if alg_type in k:
             a = [np.nan if x == "-" else float(x) for x in d[k]]
             l.append(a)
-    mean_out = np.nanmean(l,axis=0)
+    mean_out = np.nanmean(l,axis=0).round(2)
     return mean_out
 
 def ligand_table(args):

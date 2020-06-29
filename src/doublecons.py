@@ -294,7 +294,7 @@ class ConScores:
                     pass
 
             # now append the new score for position i in out list
-            out.append(lamb*score_list[i] + (1-lamb)*np.mean(wa))
+            out.append(round(lamb*score_list[i] + (1-lamb)*np.mean(wa), 2))
 
         # print(score_list)
         # print("\t".join(list(msa.loc[ref])))
