@@ -158,6 +158,9 @@ def dir_prediction(args):
     contest = args.conservation_test    # conservation test type
     algtest = args.alignment_test       # conservation for ligand alignment type
 
+    # FOR NOW HARDCODE
+    args.msa_cols = ["EVO cons MSA", "MSA", "COEVO receptor MSA", "COEVO ligands MSA"]
+    args.msta_cols = ["EVO cons MSTA","MSTA", "COEVO receptor MSTA","COEVO ligands MSTA"]
     # data preparation
     cs = {}
     # add separating variable when it is 7 lumps of data
@@ -177,102 +180,176 @@ def dir_prediction(args):
 
     # now let's do the coevolution score
     rel_intra_coevol, rel_inter_coevol = coevol_test(args)
-    cs["COEVO ligands MSA"] = average_score(rel_intra_coevol,"MSA")
-    cs["COEVO ligands MSTA"] = average_score(rel_intra_coevol,"MSTA")
     cs["COEVO receptor MSA"] = average_score(rel_inter_coevol,"MSA")
     cs["COEVO receptor MSTA"] = average_score(rel_inter_coevol,"MSTA")
+    cs["COEVO ligands MSA"] = average_score(rel_intra_coevol,"MSA")
+    cs["COEVO ligands MSTA"] = average_score(rel_intra_coevol,"MSTA")
 
-    # average MSA/MSTA then distance with
-    cs["avg DIR score"] = calculate_dirp_score(cs,["MSA","EVO cons MSA"],["MSTA","EVO cons MSTA"])
-
+    # now make it DataFrame
     cs = pd.DataFrame(cs)
     # insert relative positions
     cs.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(cs))])
 
+    # average MSA/MSTA then distance with
+    avg_dirp, part_scores = calculate_dirp_score(cs,args.msa_cols,args.msta_cols)
+
+    cs["avg DIR score"] = avg_dirp
+    cs["partial scores"] = part_scores
+
+    makeplots(cs, args)
     # plotting
-    plt.rcParams.update({'font.size': 16})
-    fig, ax = plt.subplots()
-    fig.set_size_inches(11.7, 8.27)  # A4 size
 
-    def plotter(fig, ax, alg_label, marker, pname):
 
-        # colormap
-        cmap = matplotlib.cm.get_cmap('coolwarm')
-        normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs[alg_label]))
-        colors = [cmap(normalize(value)) for value in range(len(cs[alg_label]))]
+def makeplots(cs, args):
 
-        #scatter plot
-        sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label, marker=marker, scatter_kws={"color":colors, "alpha": 0.5, "linewidth":0.5, "edgecolor":"black"})
-        # labels
-        dpos = set()
+    # plots folder
+    plot_output = args.output_path + "/plots/"
+    if not os.path.exists(plot_output):
+        os.makedirs(plot_output)
+    logging.warning("running plotting module")
 
-        def label_point(x, y, val, ax, dpos, setpos=set()):
-            a = pd.concat({'x': x, 'y': y, 'val': val}, axis=1)
-            for i, point in a.iterrows():
-                # point['x'] += 0.01
-                # i = 0
-                # while (point['x'], point['y']) in dpos:
-                #     if i == 1:
-                #         point['x'] -= 0.04
-                #         point['y'] -= 0.01
-                #         i = -1
-                #     if i == 1 and round(point['x'], 2) == 1:
-                #         point['x'] -= 0.04
-                #         point['y'] -= 0.01
-                #         i = -1
-                #     i += 1
-                #     point['x'] += 0.02
-                if not setpos or any([str(pos) in point['val'] for pos in setpos]):
-                    dpos.add((point['x'], point['y']))
-                    ax.text(point['x'], point['y'], str(point['val']), fontsize=12)
+    # palette
+    sb.set_palette(sb.color_palette("Dark2"))
 
-        setpos = {32,46,48,50}
-        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
-        label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
+    # distribution plots
+    df_dist = cs[args.msa_cols + args.msta_cols].melt(var_name='rows')
+    df_dist['type'] = ["MSA" if "MSA" in x else "MSTA" for x in df_dist['rows']]
+    df_dist['rows'] = [" ".join(x.split(" ")[:-1]) if len(x) > 4 else "Ligands alignment" for x in df_dist['rows']]
 
-    plotter(fig, ax, "MSA", 'd', "EVO cons MSA")
-    plotter(fig, ax, "MSTA", 's', "EVO cons MSTA")
+    # plot distributions
+    g = sb.FacetGrid(df_dist, row='rows', col='type', hue='rows')
+    g = (g.map(sb.distplot, 'value', hist=False, rug=True)).set_titles("{col_name} | {row_name}")
+    plt.savefig("{}/scores_distribution.png".format(plot_output), dpi=400)
+    plt.close()
 
-    # labels
-    plt.ylabel("Average Evolutionary Conservation")
-    plt.xlabel("Ligands Alignments Conservation")
-    plt.legend(loc=4)
+    # stacked box plot
+    # format data
+    ilab = [args.msa_cols, args.msta_cols]
+    df_stack = cs[['POS', 'partial scores']].copy()
+    for laidx in range(2):
+        for idx in range(4):
+            this_col = []
+            for x in df_stack['partial scores']:
+                this_col.append(x[laidx][idx])
+            df_stack["{}".format(ilab[laidx][idx])] = this_col
+    del (df_stack['partial scores'])
+    # figure out how to do this
+    fig, axes = plt.subplots(2, 1, figsize=(12, 24))
+    df_stack[args.msa_cols].iloc[::-1].plot.barh(stacked=True,ax=axes[0])
+    axes[0].set_yticklabels(cs['POS'][::-1])
+    axes[0].set_title('MSA')
+    df_stack[args.msta_cols].iloc[::-1].plot.barh(stacked=True,ax=axes[1])
+    axes[1].set_yticklabels(cs['POS'][::-1])
+    axes[1].set_title('MSTA')
+    # removed is for long form pd dataframe
+    # df_stack = df_stack.melt(var_name='rows', value_vars=args.msa_cols + args.msta_cols, id_vars='POS')
+    # df_stack['type'] = ["MSA" if "MSA" in x else "MSTA" for x in df_stack['rows']]
+    # df_stack['rows'] = [" ".join(x.split(" ")[:-1]) if len(x) > 4 else "Ligands alignment" for x in df_stack['rows']]
+    plt.savefig("{}/combined_score.png".format(plot_output), dpi=400)
+    plt.close()
 
-    # # colorbar
-    cmap = matplotlib.cm.get_cmap('coolwarm')
-    normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs["MSA"]))
-    cax, _ = matplotlib.colorbar.make_axes(ax, orientation="horizontal", aspect=50)
-    cbar = matplotlib.colorbar.ColorbarBase(cax, cmap=cmap, norm=normalize, orientation="horizontal")
-    plt.xlabel("AA position")
+    # same but sorted
+    fig, axes = plt.subplots(2, 1, figsize=(12, 24))
+    msa_sort = df_stack[args.msa_cols + ["POS"]].copy()
+    msa_sort["sum"] = msa_sort[args.msa_cols].sum(axis=1)
+    msa_sort = msa_sort.sort_values(by=['sum'])
+    del(msa_sort['sum'])
+    msa_lab = msa_sort.pop('POS')
+    msa_sort.plot.barh(stacked=True,ax=axes[0])
+    axes[0].set_yticklabels(msa_lab)
+    axes[0].set_title('MSA')
+    #msta
+    msta_sort = df_stack[args.msta_cols + ["POS"]].copy()
+    msta_sort["sum"] = msta_sort[args.msta_cols].sum(axis=1)
+    msta_sort = msta_sort.sort_values(by=['sum'])
+    del(msta_sort['sum'])
+    msta_lab = msta_sort.pop('POS')
+    msta_sort.plot.barh(stacked=True,ax=axes[1])
+    axes[1].set_yticklabels(msta_lab)
+    axes[1].set_title('MSTA')
+    plt.savefig("{}/combined_score_sorted.png".format(plot_output), dpi=400)
+    plt.close()
 
-    # plot diagonal line
-    lims = [
-        np.min([ax.get_xlim(), ax.get_ylim()]),
-        np.max([ax.get_xlim(), ax.get_ylim()]),
-        ]
-    ax.plot(lims, lims, ls="--", c=".3")
-    # in case it is 7 lumps of X axis
-    if algtest == "id":  # it is 7 blocks
-        ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # float representation to 2 decimals
-        ax.bar(np.arange(0, 1.01, 1 / 6), [ax.get_ylim()[1]] * 7, width=[0.15] * 7, color="grey", alpha=0.3)  # backgroun bars
-        plt.xticks(np.arange(0, 1.01, 1 / 6))  # ligands xticks
-
-    # remove top and right
-    plt.gca().spines['top'].set_visible(False)
-    plt.gca().spines['right'].set_visible(False)
-
-    # saving
-    plt.savefig("{}/{}dirp.png".format(args.output_path, prot.name), format='png', dpi=800)
+    #
+    # def plotter(fig, ax, alg_label, marker, pname):
+    #
+    #     # colormap
+    #     cmap = matplotlib.cm.get_cmap('coolwarm')
+    #     normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs[alg_label]))
+    #     colors = [cmap(normalize(value)) for value in range(len(cs[alg_label]))]
+    #
+    #     #scatter plot
+    #     sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label, marker=marker, scatter_kws={"color":colors, "alpha": 0.5, "linewidth":0.5, "edgecolor":"black"})
+    #     # labels
+    #     dpos = set()
+    #
+    #     def label_point(x, y, val, ax, dpos, setpos=set()):
+    #         a = pd.concat({'x': x, 'y': y, 'val': val}, axis=1)
+    #         for i, point in a.iterrows():
+    #             # point['x'] += 0.01
+    #             # i = 0
+    #             # while (point['x'], point['y']) in dpos:
+    #             #     if i == 1:
+    #             #         point['x'] -= 0.04
+    #             #         point['y'] -= 0.01
+    #             #         i = -1
+    #             #     if i == 1 and round(point['x'], 2) == 1:
+    #             #         point['x'] -= 0.04
+    #             #         point['y'] -= 0.01
+    #             #         i = -1
+    #             #     i += 1
+    #             #     point['x'] += 0.02
+    #             if not setpos or any([str(pos) in point['val'] for pos in setpos]):
+    #                 dpos.add((point['x'], point['y']))
+    #                 ax.text(point['x'], point['y'], str(point['val']), fontsize=12)
+    #
+    #     setpos = {32,46,48,50}
+    #     label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
+    #     label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
+    #
+    # plotter(fig, ax, "MSA", 'd', "EVO cons MSA")
+    # plotter(fig, ax, "MSTA", 's', "EVO cons MSTA")
+    #
+    # # labels
+    # plt.ylabel("Average Evolutionary Conservation")
+    # plt.xlabel("Ligands Alignments Conservation")
+    # plt.legend(loc=4)
+    #
+    # # # colorbar
+    # cmap = matplotlib.cm.get_cmap('coolwarm')
+    # normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs["MSA"]))
+    # cax, _ = matplotlib.colorbar.make_axes(ax, orientation="horizontal", aspect=50)
+    # cbar = matplotlib.colorbar.ColorbarBase(cax, cmap=cmap, norm=normalize, orientation="horizontal")
+    # plt.xlabel("AA position")
+    #
+    # # plot diagonal line
+    # lims = [
+    #     np.min([ax.get_xlim(), ax.get_ylim()]),
+    #     np.max([ax.get_xlim(), ax.get_ylim()]),
+    #     ]
+    # ax.plot(lims, lims, ls="--", c=".3")
+    # # in case it is 7 lumps of X axis
+    # if algtest == "id":  # it is 7 blocks
+    #     ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # float representation to 2 decimals
+    #     ax.bar(np.arange(0, 1.01, 1 / 6), [ax.get_ylim()[1]] * 7, width=[0.15] * 7, color="grey", alpha=0.3)  # backgroun bars
+    #     plt.xticks(np.arange(0, 1.01, 1 / 6))  # ligands xticks
+    #
+    # # remove top and right
+    # plt.gca().spines['top'].set_visible(False)
+    # plt.gca().spines['right'].set_visible(False)
+    #
+    # # saving
+    # plt.savefig("{}/{}_dirp.png".format(args.output_path, prot.name), format='png', dpi=800)
 
     # save text output also but add average
-    with open("{}/{}dirp.csv".format(args.output_path, prot.name), "w") as outfile:
-        cs.to_csv(outfile, sep="\t")
+    with open("{}/DIRpred.csv".format(args.output_path), "w") as outfile:
+        cs.to_csv(outfile)
     # save also sorted version
     sorted_cs = cs.sort_values("avg DIR score", ascending=False)
-    with open("{}/{}dirp_sorted.csv".format(args.output_path, prot.name), "w") as outfile:
-        sorted_cs.to_csv(outfile, sep="\t")
+    with open("{}/DIRpred_sorted.csv".format(args.output_path), "w") as outfile:
+        sorted_cs.to_csv(outfile)
 
-def calculate_dirp_score(df, msa_id=["MSA","EVO cons MSA"], msta_id=["MSTA","EVO cons MSTA"]):
+def calculate_dirp_score_old(df, msa_id=["MSA","EVO cons MSA"], msta_id=["MSTA","EVO cons MSTA"]):
     """average msa and msta score (distance from diagonal) v0.1"""
 
     diag = lambda x,y: np.abs(x-y) * np.sqrt(2) / 2
@@ -280,13 +357,38 @@ def calculate_dirp_score(df, msa_id=["MSA","EVO cons MSA"], msta_id=["MSTA","EVO
     MSTA_score = diag(df[msta_id[0]],df[msta_id[1]])
     return np.mean([MSA_score, MSTA_score], axis=0)
 
-def calculate_dirp_score_new(df, msa_id=["MSA","EVO cons MSA"], msta_id=["MSTA","EVO cons MSTA"]):
-    """average msa and msta score combining conservation and coevolution, v1.0"""
+def calculate_dirp_score(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
+    """sum method, v1.0
+    the 4 scores are
+    I: avg evolutionary conservation (positive)
+    II: ligands alignment conservation (negative)
+    III: avg ligand-receptor max coevolution (positive)
+    IV: avg ligand-ligand max coevolution (negative)
 
-    diag = lambda x,y: np.abs(x-y) * np.sqrt(2) / 2
-    MSA_score = diag(df[msa_id[0]],df[msa_id[1]])
-    MSTA_score = diag(df[msta_id[0]],df[msta_id[1]])
-    return np.mean([MSA_score, MSTA_score], axis=0)
+    the 4 scores will be weighted by a parameter each, by default 0.25, and summed to compose the final score
+
+    returns:
+    average MSA,MSTA dirp score array = a(I) + b(1-II) + c(III) + d(1-IV)
+    partial scores array = same as before but comma instead of sum, and (MSAps,MSTAps)
+    """
+
+    a,b,c,d = abcd
+    MSA_score = []
+    MSTA_score = []
+    partial_score = []
+
+    for i,r in df.iterrows():
+        # msa
+        I,II,III,IV = list(r[msa_ids])
+        msa_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSA_score.append(sum(msa_partial_score))
+        # msta
+        I,II,III,IV = list(r[msta_ids])
+        msta_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSTA_score.append(sum(msta_partial_score))
+        partial_score.append((msa_partial_score, msta_partial_score))
+
+    return np.mean([MSA_score, MSTA_score], axis=0), partial_score
 
 
 def average_score(d,alg_type):
@@ -389,9 +491,9 @@ def coevol_test(args):
 
     report_intra["MSA"] = dc.intra_coevol(msa,"{}/{}".format(coevol_output, msa.name), coevo_test)
     report_intra["MSTA"] = dc.intra_coevol(msta, "{}/{}".format(coevol_output, msta.name), coevo_test)
-    report_intra[prot.name] = dc.intra_coevol(prot, "{}/intra_{}".format(args.output_path, prot.name),
+    report_intra[prot.name] = dc.intra_coevol(prot, "{}/intra_{}".format(coevol_output, prot.name),
                                                  args.coevolution_test)
-    report_inter[prot.name] = dc.inter_coevol(prot, receptor, "{}/inter_{}".format(args.output_path, prot.name), coevo_test)
+    report_inter[prot.name] = dc.inter_coevol(prot, receptor, "{}/inter_{}".format(coevol_output, prot.name), coevo_test)
     for n in intra_rc:
         report_intra[n+"_coevol_{}".format(coevo_test)] = intra_rc[n]
         report_inter[n+"_coevol_{}".format(coevo_test)] = inter_rc[n]
@@ -403,12 +505,12 @@ def coevol_test(args):
     report_inter_df.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(report_inter_df))])
 
     # save reports
-    with open("{}/intra_coevol_report.csv".format(args.output_path), "w") as outfile:
+    with open("{}/intra_coevol_report.csv".format(coevol_output), "w") as outfile:
         report_intra_df.to_csv(outfile, sep="\t")
-    with open("{}/inter_coevol_report.csv".format(args.output_path), "w") as outfile:
+    with open("{}/inter_coevol_report.csv".format(coevol_output), "w") as outfile:
         report_inter_df.to_csv(outfile, sep="\t")
 
-    return intra_rc,inter_rc
+    return intra_rc, inter_rc
 
 def pca_test(args):
     """
