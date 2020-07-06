@@ -140,7 +140,7 @@ def con_con_comparison(args):
     plt.savefig("{}/{}concon.png".format(args.output_path, prot.name), format='png', dpi=800)
     # save text output also
     with open("{}/{}concon.csv".format(args.output_path, prot.name), "w") as outfile:
-        cs.to_csv(outfile, sep="\t")
+        cs.to_csv(outfile)
 
 def dir_prediction(args):
     """
@@ -190,8 +190,11 @@ def dir_prediction(args):
     # insert relative positions
     cs.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(cs))])
 
+    # get the values of abcd:
+    abcd = [1/int(x) for x in args.abcd.split(",")]
     # average MSA/MSTA then distance with
-    avg_dirp, part_scores = calculate_dirp_score(cs,args.msa_cols,args.msta_cols)
+
+    avg_dirp, part_scores = calculate_dirp_score(cs,args.msa_cols,args.msta_cols, abcd)
 
     cs["avg DIR score"] = avg_dirp
     cs["partial scores"] = part_scores
@@ -269,78 +272,6 @@ def makeplots(cs, args):
     axes[1].set_title('MSTA')
     plt.savefig("{}/combined_score_sorted.png".format(plot_output), dpi=400)
     plt.close()
-
-    #
-    # def plotter(fig, ax, alg_label, marker, pname):
-    #
-    #     # colormap
-    #     cmap = matplotlib.cm.get_cmap('coolwarm')
-    #     normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs[alg_label]))
-    #     colors = [cmap(normalize(value)) for value in range(len(cs[alg_label]))]
-    #
-    #     #scatter plot
-    #     sb.regplot(alg_label, pname, cs, scatter=True, fit_reg=False, ax=ax, label=alg_label, marker=marker, scatter_kws={"color":colors, "alpha": 0.5, "linewidth":0.5, "edgecolor":"black"})
-    #     # labels
-    #     dpos = set()
-    #
-    #     def label_point(x, y, val, ax, dpos, setpos=set()):
-    #         a = pd.concat({'x': x, 'y': y, 'val': val}, axis=1)
-    #         for i, point in a.iterrows():
-    #             # point['x'] += 0.01
-    #             # i = 0
-    #             # while (point['x'], point['y']) in dpos:
-    #             #     if i == 1:
-    #             #         point['x'] -= 0.04
-    #             #         point['y'] -= 0.01
-    #             #         i = -1
-    #             #     if i == 1 and round(point['x'], 2) == 1:
-    #             #         point['x'] -= 0.04
-    #             #         point['y'] -= 0.01
-    #             #         i = -1
-    #             #     i += 1
-    #             #     point['x'] += 0.02
-    #             if not setpos or any([str(pos) in point['val'] for pos in setpos]):
-    #                 dpos.add((point['x'], point['y']))
-    #                 ax.text(point['x'], point['y'], str(point['val']), fontsize=12)
-    #
-    #     setpos = {32,46,48,50}
-    #     label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
-    #     label_point(cs[alg_label], cs["EVO cons {}".format(alg_label)], cs.POS, plt.gca(), dpos, setpos)
-    #
-    # plotter(fig, ax, "MSA", 'd', "EVO cons MSA")
-    # plotter(fig, ax, "MSTA", 's', "EVO cons MSTA")
-    #
-    # # labels
-    # plt.ylabel("Average Evolutionary Conservation")
-    # plt.xlabel("Ligands Alignments Conservation")
-    # plt.legend(loc=4)
-    #
-    # # # colorbar
-    # cmap = matplotlib.cm.get_cmap('coolwarm')
-    # normalize = matplotlib.colors.Normalize(vmin=0, vmax=len(cs["MSA"]))
-    # cax, _ = matplotlib.colorbar.make_axes(ax, orientation="horizontal", aspect=50)
-    # cbar = matplotlib.colorbar.ColorbarBase(cax, cmap=cmap, norm=normalize, orientation="horizontal")
-    # plt.xlabel("AA position")
-    #
-    # # plot diagonal line
-    # lims = [
-    #     np.min([ax.get_xlim(), ax.get_ylim()]),
-    #     np.max([ax.get_xlim(), ax.get_ylim()]),
-    #     ]
-    # ax.plot(lims, lims, ls="--", c=".3")
-    # # in case it is 7 lumps of X axis
-    # if algtest == "id":  # it is 7 blocks
-    #     ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))  # float representation to 2 decimals
-    #     ax.bar(np.arange(0, 1.01, 1 / 6), [ax.get_ylim()[1]] * 7, width=[0.15] * 7, color="grey", alpha=0.3)  # backgroun bars
-    #     plt.xticks(np.arange(0, 1.01, 1 / 6))  # ligands xticks
-    #
-    # # remove top and right
-    # plt.gca().spines['top'].set_visible(False)
-    # plt.gca().spines['right'].set_visible(False)
-    #
-    # # saving
-    # plt.savefig("{}/{}_dirp.png".format(args.output_path, prot.name), format='png', dpi=800)
-
     # save text output also but add average
     #index plus one
     cs.index = cs.index + 1
@@ -395,7 +326,7 @@ def calculate_dirp_score(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
 
 
 def average_score(d,alg_type):
-    """returns the average conservation from the dictionary of relative scores"""
+    """returns the average value from the dictionary of relative scores"""
     l = []
     for k in d:
         if alg_type in k:
@@ -444,7 +375,7 @@ def ligand_table(args):
     cs.insert(0, 'POS', [str(x) + seq[x - 1] for x in range(1, 1 + len(cs))])
 
     with open("{}/ligand_table.csv".format(args.output_path), "w") as outfile:
-        cs.to_csv(outfile, sep="\t")
+        cs.to_csv(outfile)
 
     return rel_cons
 
@@ -480,25 +411,33 @@ def coevol_test(args):
     intra_rc,inter_rc = {},{}
     report_intra, report_inter = {},{}
     for m in [msa, msta]:
+        lig_rc = dc.all_ligands_coevol(args, m, "{}/all_ligands".format(coevol_output), coevo_test)
+        this_name = "{}_all_ligands".format(m.name)
+        intra_rc[this_name] = lig_rc
+        report_intra[this_name] = lig_rc
+
         for n in m.get_names():
             logging.warning("processing {}".format(n))
             assert n in args.ligands, "{} not found in ligands list: {}".format(n, args.ligands.keys())
             this_ligand = args.ligands[n]
-            this_ligand_intra_score = dc.intra_coevol(this_ligand, "{}/{}".format(coevol_output, this_ligand.name), coevo_test)
+            #this_ligand_intra_score = dc.intra_coevol(this_ligand, "{}/{}".format(coevol_output, this_ligand.name), coevo_test)
             this_ligand_inter_score = dc.inter_coevol(this_ligand, receptor, "{}/{}u{}intercoevo".format(coevol_output, this_ligand.name, receptor.name), coevo_test)
             this_name = "{}_{}".format(m.name, n)
-            report_intra[this_name] = m.get_referenced_positions(n)
+            #report_intra[this_name] = m.get_referenced_positions(n)
+#            report_intra[this_name] = lig_rc
             report_inter[this_name] = m.get_referenced_positions(n)
-            intra_rc[this_name] = m.get_referenced_scores(n, this_ligand, this_ligand_intra_score)
+            #intra_rc[this_name] = m.get_referenced_scores(n, this_ligand, this_ligand_intra_score)
+            #intra_rc[this_name] = lig_rc
             inter_rc[this_name] = m.get_referenced_scores(n, this_ligand, this_ligand_inter_score)
 
     report_intra["MSA"] = dc.intra_coevol(msa,"{}/{}".format(coevol_output, msa.name), coevo_test)
     report_intra["MSTA"] = dc.intra_coevol(msta, "{}/{}".format(coevol_output, msta.name), coevo_test)
-    report_intra[prot.name] = dc.intra_coevol(prot, "{}/intra_{}".format(coevol_output, prot.name),
-                                                 args.coevolution_test)
+#    report_intra[prot.name] = dc.intra_coevol(prot, "{}/intra_{}".format(coevol_output, prot.name),
+#                                                 args.coevolution_test)
     report_inter[prot.name] = dc.inter_coevol(prot, receptor, "{}/inter_{}".format(coevol_output, prot.name), coevo_test)
     for n in intra_rc:
         report_intra[n+"_coevol_{}".format(coevo_test)] = intra_rc[n]
+    for n in inter_rc:
         report_inter[n+"_coevol_{}".format(coevo_test)] = inter_rc[n]
     # make df
     report_intra_df = pd.DataFrame(report_intra)
@@ -509,9 +448,9 @@ def coevol_test(args):
 
     # save reports
     with open("{}/intra_coevol_report.csv".format(coevol_output), "w") as outfile:
-        report_intra_df.to_csv(outfile, sep="\t")
+        report_intra_df.to_csv(outfile)
     with open("{}/inter_coevol_report.csv".format(coevol_output), "w") as outfile:
-        report_inter_df.to_csv(outfile, sep="\t")
+        report_inter_df.to_csv(outfile)
 
     return intra_rc, inter_rc
 
@@ -667,6 +606,7 @@ def main(argv):
     parser.add_argument("--alignment-test", default="", help="type of conservation measure, used for alignment. By default, like conservation_test")
     parser.add_argument("--coevolution-test", default="MI",
                         help="coevolution measure. By default, MI: mutual information. can be MIp, APC corrected MI")
+    parser.add_argument("--abcd", default="", help="the individual contributions for each score, as in 1 over x, by defaultis: 4,4,4,4. meaning 1 over 4, four times.")
     args = parser.parse_args()
 
     # CREATE LOG DETAILS

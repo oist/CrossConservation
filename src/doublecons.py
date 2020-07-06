@@ -86,7 +86,7 @@ class ConScores:
     @staticmethod
     def blosum(msa, ref):
         """
-        blosum score: sum of BLOSUM(ref, L) for L in other ligands.
+        blosum score: sum of BLOSUM(ref, L) for L in all ligands.
         Normalized by the number of sums and min/max blos62 score
         :param msa:
         :param ref:
@@ -103,7 +103,7 @@ class ConScores:
             reference_res = str(msa.iloc[:, i].loc[ref])
 
             if reference_res not in "-.":
-                this_score = - blosum62[(reference_res, reference_res)]  # starts in debt to cover self reference hit
+                this_score = 0 # - blosum62[(reference_res, reference_res)]  # starts in debt to cover self reference hit
                 for res in res_list:
                     if res not in "-.":
                         norm += 1
@@ -733,7 +733,7 @@ class MSA(object):
         best_couple = []
         counter = 0
 
-        limcheck = 0.9 * len(mseq)  # if 60% is aligned, then consider it right
+        limcheck = 0.9 * len(mseq)  # if 90% is aligned, then consider it right
         cm = -1
 
         while cm < limcheck:
@@ -782,8 +782,7 @@ class MSA(object):
 
         return out
 
-
-    def get_referenced_positions(self, name):
+    def get_referenced_positions(self, name, ref=""):
         """
         returns a list of positions split as to be re
         :param name:
@@ -792,7 +791,8 @@ class MSA(object):
         """
 
         msa = self.msa
-        ref = self.reference
+        if not ref:
+            ref = self.reference
         assert name in msa.index, "{} not found in the MSA with names {}".format(name, msa.index)
         assert ref in msa.index, "ref {} not found in the MSA with names {}".format(ref, msa.index)
 
@@ -813,7 +813,7 @@ class MSA(object):
                 last_ref_pos = i + 0
                 if namelist[i] in ".-":  # if the last one is a gap, add it
                     current_pos.append("-")
-                name_out.append(",".join(current_pos))
+                name_out.append("_".join(current_pos))
                 current_pos = []
 
         # add tail of extra residues
@@ -824,7 +824,7 @@ class MSA(object):
             else:
                 current_pos.insert(0,name_out[-1])  # add last position added if there was a match
 
-            name_out[-1] = ",".join(current_pos)
+            name_out[-1] = "_".join(current_pos)
 
         return name_out
 
@@ -856,7 +856,7 @@ class MSA(object):
         i = 0
         try:
             for pos_string in ref_pos[:-1]:
-                pos_string = pos_string.split(",")[-1]  # the last in comma sep values ex. 5E,6Y,7P
+                pos_string = pos_string.split("_")[-1]  # the last in comma sep values ex. 5E,6Y,7P
                 if pos_string != "-":
                     this_pos = int(pos_string[:-1])  # excluding residue, ex. 5E
                     converted_pos = msa2evo[this_pos]
@@ -866,7 +866,7 @@ class MSA(object):
                 i += 1
 
             # in case of last residue, the aligned aa is the first, not the last!
-            last_score = ref_pos[-1].split(",")[0]
+            last_score = ref_pos[-1].split("_")[0]
             if last_score != "-":
                 this_pos_name = int(last_score[:-1])
                 converted_pos = msa2evo[this_pos_name]
@@ -942,8 +942,198 @@ def pseudobond_top5(ori_df, out_path):
 
     open(out_path,"w").write("\n".join(out))
 
+# all ligands utils
+def get_pos_converter_dic(args, m):
+    # convert positions from reference to msa evo
+    msa2evo_conv = {n: m.msa_to_evo_reference(args.ligands[n]) for n in args.ligands}
+    ligs_referenced_pos = {n:m.get_referenced_positions(n) for n in args.ligands}
+    pos_converter = {}  # i promise i will never going to let you down again!
+    # pos_converter creates a lig specific dictionary of ligands MSA reference pos to prot MSA reference pos
+    # but before you can use it as an index to the prot MSA, you need to remember prot MSA has gaps
+    # so you need to use ligand.get_ref_pos(), and you will get the positions where the reference has no gaps
+    for lig in args.ligands:
+        i = 0
+        lig_conv = {}
+        for pos_string in ligs_referenced_pos[lig][:-1]:
+            pos_string = pos_string.split("_")[-1]  # get the last aligned position
+            if pos_string != "-":
+                this_pos = int(pos_string[:-1])  # excluding residue, ex. 5E
+                converted_pos = msa2evo_conv[lig][this_pos]
+                if converted_pos != "na":
+                    lig_conv[i] = converted_pos - 1
+            i += 1
+        # in case of last residue, the aligned aa is the first, not the last!
+        last_score = ligs_referenced_pos[lig][-1].split("_")[0]
+        if last_score != "-":
+            this_pos_name = int(last_score[:-1])
+            converted_pos = msa2evo_conv[lig][this_pos_name]
+            if converted_pos != "na":
+                lig_conv[i] = converted_pos - 1
+        pos_converter[lig] = lig_conv
+    return pos_converter
 
-def intra_coevol(prot, outpath, test):
+def get_msa_dic(args, m, pos_converter, evo_msa, org_list):
+    referenced_pos = m.get_referenced_pos()
+    ref_pos_prot = {n: args.ligands[n].get_ref_pos() for n in args.ligands}
+    ref_len = len(ref_pos_prot[m.reference])
+    msa_dic = {}
+    for i in range(ref_len):
+        rp = referenced_pos[i]
+        pos_dic = {}
+        for org in org_list:
+            l, o = org.split("_")
+            this_msa = args.ligands[l].get_msa()
+            if i in pos_converter[l]:
+                converted_pos = pos_converter[l][i]
+                if len(ref_pos_prot[l]) > converted_pos:
+                    ipos = ref_pos_prot[l][converted_pos]
+                    pos_dic[org] = this_msa.iloc[:, ipos][o]
+                else:
+                    pos_dic[org] = "-"
+            else:
+                pos_dic[org] = "-"
+
+        msa_dic[rp] = pos_dic
+    return msa_dic
+
+def all_ligands_coevol(args, m, outpath, coevo_test):
+    """
+    msa based coevolution
+    MI apc corrected:
+    https://academic.oup.com/bioinformatics/article/25/9/1125/204722
+
+    returns the max value of each position array
+    :param msa:
+    :param org:
+    :param out:
+    :return:
+    """
+
+    pos_converter = get_pos_converter_dic(args, m)
+
+    evo_msa = {n: args.ligands[n].get_msa() for n in m.get_names()}
+    org_list = ["{}_{}".format(n, org) for n in evo_msa for org in args.ligands[n].get_names()]
+    ref_len = len(args.ligands[m.reference].get_ref_pos())
+
+    msa_dic = get_msa_dic(args, m, pos_converter, evo_msa, org_list)
+
+    referenced_pos = m.get_referenced_pos()
+
+    miatrix = np.zeros([ref_len, ref_len])
+    top5list = []
+
+    for i in range(ref_len - 1):
+        ipos = referenced_pos[i]
+        icol = msa_dic[ipos]
+        for j in range(i + 1, ref_len):
+            test = []
+            jpos = referenced_pos[j]
+            jcol = msa_dic[jpos]
+
+            # find couples
+            for org in org_list:
+                org_ires = icol[org]
+                org_jres = jcol[org]
+                # to fix, handle multiple sequences. ATM: to_dict kills multiple col names!! AT YOUR OWN RISK!
+                # if type(org_ires) == pd.Series:
+                #     org_ires = random.choice(list(org_ires))
+                # if type(org_jres) == pd.Series:
+                #     org_jres = random.choice(list(org_ires))
+                if org_ires not in ".-" and org_jres not in ".-":
+                    test.append((org_ires,org_jres))
+            MI = mutual_info(test)
+            MI = round(MI, 2)
+            miatrix[i][j] = MI
+            miatrix[j][i] = MI
+    if coevo_test == "MIp":
+        miatrix = correct_apc(miatrix)
+    mitab = pd.DataFrame(miatrix, columns=referenced_pos, index=referenced_pos)
+
+    for i in range(ref_len-1):
+        for j in range(i+1, ref_len):
+            top5list.append((miatrix[i][j], referenced_pos[i], referenced_pos[j]))
+    top5tab = pd.DataFrame(sorted(top5list, reverse=True)[:int(len(top5list) * 0.10)])
+
+    with open(outpath + ".tsv", "w") as outfile:
+        mitab.to_csv(outfile)
+    plot_coevol(mitab, outpath + ".png")
+    with open(outpath + "_top5.tsv", "w") as outfile:
+        top5tab.to_csv(outfile)
+    pseudobond_top5(top5tab, outpath + "_top5chimera.txt")
+
+    return list(mitab.max())
+
+
+def all_ligands_receptor_coevol(args, m, receptor, outpath, coevo_test):
+    """
+    TBD
+    msa based coevolution
+    MI apc corrected:
+    https://academic.oup.com/bioinformatics/article/25/9/1125/204722
+
+    returns the max value of each position array
+    :param msa:
+    :param org:
+    :param out:
+    :return:
+    """
+
+    pos_converter = get_pos_converter_dic(args, m)
+
+    evo_msa = {n: args.ligands[n].get_msa() for n in m.get_names()}
+    org_list = ["{}_{}".format(n, org) for n in evo_msa for org in args.ligands[n].get_names()]
+    ref_len = len(m.reference.get_ref_pos())
+
+    msa_dic = get_msa_dic(args, m, pos_converter, evo_msa, org_list)
+
+    referenced_pos = m.get_referenced_pos()
+
+    miatrix = np.zeros([ref_len, ref_len])
+    top5list = []
+
+    for i in range(ref_len - 1):
+        ipos = referenced_pos[i]
+        icol = msa_dic[ipos]
+        for j in range(i + 1, ref_len):
+            test = []
+            jpos = referenced_pos[j]
+            jcol = msa_dic[jpos]
+
+            # find couples
+            for org in org_list:
+                org_ires = icol[org]
+                org_jres = jcol[org]
+                # to fix, handle multiple sequences. ATM: to_dict kills multiple col names!! AT YOUR OWN RISK!
+                # if type(org_ires) == pd.Series:
+                #     org_ires = random.choice(list(org_ires))
+                # if type(org_jres) == pd.Series:
+                #     org_jres = random.choice(list(org_ires))
+                if org_ires not in ".-" and org_jres not in ".-":
+                    test.append((org_ires,org_jres))
+            MI = mutual_info(test)
+            MI = round(MI, 2)
+            miatrix[i][j] = MI
+            miatrix[j][i] = MI
+    if coevo_test == "MIp":
+        miatrix = correct_apc(miatrix)
+    mitab = pd.DataFrame(miatrix, columns=referenced_pos, index=referenced_pos)
+
+    for i in range(ref_len-1):
+        for j in range(i+1, ref_len):
+            top5list.append((miatrix[i][j], referenced_pos[i], referenced_pos[j]))
+    top5tab = pd.DataFrame(sorted(top5list, reverse=True)[:int(len(top5list) * 0.10)])
+
+    with open(outpath + ".tsv", "w") as outfile:
+        mitab.to_csv(outfile)
+    plot_coevol(mitab, outpath + ".png")
+    with open(outpath + "_top5.tsv", "w") as outfile:
+        top5tab.to_csv(outfile)
+    pseudobond_top5(top5tab, outpath + "_top5chimera.txt")
+
+    return list(mitab.max())
+
+
+def intra_coevol(prot, outpath, coevo_test):
     """
     intra protein coevolution
     MI apc corrected:
@@ -989,7 +1179,7 @@ def intra_coevol(prot, outpath, test):
             MI = round(MI, 2)
             miatrix[i][j] = MI
             miatrix[j][i] = MI
-    if test == "MIp":
+    if coevo_test == "MIp":
         miatrix = correct_apc(miatrix)
     mitab = pd.DataFrame(miatrix, columns=referenced_pos, index=referenced_pos)
 
@@ -999,16 +1189,16 @@ def intra_coevol(prot, outpath, test):
     top5tab = pd.DataFrame(sorted(top5list, reverse=True)[:int(len(top5list) * 0.10)])
 
     with open(outpath + ".tsv", "w") as outfile:
-        mitab.to_csv(outfile, sep="\t")
+        mitab.to_csv(outfile)
     plot_coevol(mitab, outpath + ".png")
     with open(outpath + "_top5.tsv", "w") as outfile:
-        top5tab.to_csv(outfile, sep="\t")
+        top5tab.to_csv(outfile)
     pseudobond_top5(top5tab,outpath + "_top5chimera.txt")
 
     return list(mitab.max())
 
 
-def inter_coevol(p1, p2, outpath, test):
+def inter_coevol(p1, p2, outpath, coevo_test):
     """
     intra protein coevolution
     MI apc corrected
@@ -1054,7 +1244,7 @@ def inter_coevol(p1, p2, outpath, test):
             MI = round(MI, 2)
             miatrix[i][j] = MI
 
-    if test == "MIp":
+    if coevo_test == "MIp":
         miatrix = correct_apc(miatrix)
     mitab = pd.DataFrame(miatrix, columns=referenced2_pos, index=referenced1_pos)
 
@@ -1064,10 +1254,10 @@ def inter_coevol(p1, p2, outpath, test):
     top5tab = pd.DataFrame(sorted(top5list, reverse=True)[:int(len(top5list) * 0.10)])
 
     with open(outpath + ".tsv", "w") as outfile:
-        mitab.to_csv(outfile, sep="\t")
+        mitab.to_csv(outfile)
     plot_coevol(mitab, outpath + ".png")
     with open(outpath + "_top5.tsv", "w") as outfile:
-        top5tab.to_csv(outfile, sep="\t")
+        top5tab.to_csv(outfile)
     pseudobond_top5(top5tab, outpath + "_top5chimera.txt")
 
     return list(mitab.max(axis=1))
@@ -1076,12 +1266,14 @@ def correct_apc(M):
     """
     subtracts the average product to the MI value
     APC = (MI(a,*) * MI(*,b))/ MI(*,*)
+    MOD: dont assume square matrix
     :param M:
     :return:
     """
     all_mean = np.average(M,axis=None)
     col_mean = np.average(M,axis=1)
-    APC = [[col_mean[i] * col_mean[j] / all_mean for i in range(len(M))] for j in range(len(M))]
+    row_mean = np.average(M,axis=0)
+    APC = [[col_mean[j] * row_mean[i] / all_mean for i in range(len(M[0]))] for j in range(len(M))]
     Mmod = M-APC
 
     return Mmod
