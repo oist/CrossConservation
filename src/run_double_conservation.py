@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA as sklearnPCA
 import matplotlib.cm as cm
 import matplotlib
+from scipy.stats import zscore
 
 def read_input_file(args):
     """
@@ -163,14 +164,10 @@ def dir_prediction(args):
     args.msta_cols = ["EVO cons MSTA","MSTA", "COEVO receptor MSTA","COEVO ligands MSTA"]
     # data preparation
     cs = {}
-    # add separating variable when it is 7 lumps of data
-    sepvar = 0
-    if algtest == "id":
-        sepvar = 0.04
 
     # ligands alignment scorings
-    cs["MSA"] = [round(x, 2) + sepvar for x in msa.get_cons_scores(algtest)]
-    cs["MSTA"] = [round(x, 2) - sepvar for x in msta.get_cons_scores(algtest)]
+    cs["MSA"] = [round(x, 2) for x in msa.get_cons_scores(algtest)]
+    cs["MSTA"] = [round(x, 2) for x in msta.get_cons_scores(algtest)]
     # cs[prot.name] = prot.get_cons_scores(contest)
     # evolutionary alignment average scoring
     # now I need one evo cons from MSA alignment average and one from MSTA alignment average
@@ -323,6 +320,182 @@ def calculate_dirp_score(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
         partial_score.append((msa_partial_score, msta_partial_score))
 
     return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
+
+def calculate_dirp_score_double(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
+    """sum method, v1.0
+    the 4 scores are
+    I: avg evolutionary conservation (positive)
+    II: ligands alignment conservation (negative)
+    III: avg ligand-receptor max coevolution (positive)
+    IV: avg ligand-ligand max coevolution (negative)
+
+    the 4 scores will be weighted by a parameter each, by default 0.25, and summed to compose the final score
+
+    returns:
+    average MSA,MSTA dirp score array = a(I) * b(1-II) * c(III) * d(1-IV)
+    partial scores array = same as before but comma instead of product, and (MSAps,MSTAps)
+    """
+
+    a,b,c,d = abcd
+    MSA_score = []
+    MSTA_score = []
+    partial_score = []
+
+    for i,r in df.iterrows():
+        # msa
+        I,II,III,IV = list(r[msa_ids])
+        msa_partial_score = a * I,  b * (1 - II), c * III, d * (1 - IV)
+        MSA_score.append(msa_partial_score[0] * msa_partial_score[1] + msa_partial_score[2] * msa_partial_score[3])
+        # msta
+        I,II,III,IV = list(r[msta_ids])
+        msta_partial_score = a * I, b * (1 - II), c * III, d * (1 - IV)
+        MSTA_score.append(msta_partial_score[0] * msta_partial_score[1] + msta_partial_score[2] * msta_partial_score[3])
+        partial_score.append((msa_partial_score, msta_partial_score))
+
+    return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
+
+def calculate_dirp_score_z_score(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
+    """sum method, v1.0
+    the 4 scores are
+    I: avg evolutionary conservation (positive)
+    II: ligands alignment conservation (negative)
+    III: avg ligand-receptor max coevolution (positive)
+    IV: avg ligand-ligand max coevolution (negative)
+
+    the 4 scores will be weighted by a parameter each, by default 0.25, and summed to compose the final score
+
+    returns:
+    average MSA,MSTA dirp score array = a(I) + b(1-II) + c(III) + d(1-IV)
+    partial scores array = same as before but comma instead of sum, and (MSAps,MSTAps)
+    """
+
+    # apply z-score
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    z_score_df = df[numeric_cols].apply(zscore)
+    for c in z_score_df:
+        df[c] = z_score_df[c]
+    a,b,c,d = abcd
+    MSA_score = []
+    MSTA_score = []
+    partial_score = []
+
+    for i,r in df.iterrows():
+        # msa
+        I,II,III,IV = list(r[msa_ids])
+        msa_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSA_score.append(sum(msa_partial_score))
+        # msta
+        I,II,III,IV = list(r[msta_ids])
+        msta_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSTA_score.append(sum(msta_partial_score))
+        partial_score.append((msa_partial_score, msta_partial_score))
+
+    return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
+
+def calculate_dirp_score_quantile(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
+    """sum method, v1.0
+    the 4 scores are
+    I: avg evolutionary conservation (positive)
+    II: ligands alignment conservation (negative)
+    III: avg ligand-receptor max coevolution (positive)
+    IV: avg ligand-ligand max coevolution (negative)
+
+    the 4 scores will be weighted by a parameter each, by default 0.25, and summed to compose the final score
+
+    returns:
+    average MSA,MSTA dirp score array = a(I) + b(1-II) + c(III) + d(1-IV)
+    partial scores array = same as before but comma instead of sum, and (MSAps,MSTAps)
+    """
+
+    # apply quantile
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+
+    def quantile_normalize(df):
+        """
+        input: dataframe with numerical columns
+        output: dataframe with quantile normalized values
+        """
+        df_sorted = pd.DataFrame(np.sort(df.values,
+                                         axis=0),
+                                 index=df.index,
+                                 columns=df.columns)
+        df_mean = df_sorted.mean(axis=1)
+        df_mean.index = np.arange(1, len(df_mean) + 1)
+        df_qn = df.rank(method="min").stack().astype(int).map(df_mean).unstack()
+        return (df_qn)
+
+    quantile_df = quantile_normalize(df[numeric_cols])
+
+    for c in quantile_df:
+        df[c] = quantile_df[c]
+    a,b,c,d = abcd
+    MSA_score = []
+    MSTA_score = []
+    partial_score = []
+
+    for i,r in df.iterrows():
+        # msa
+        I,II,III,IV = list(r[msa_ids])
+        msa_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSA_score.append(sum(msa_partial_score))
+        # msta
+        I,II,III,IV = list(r[msta_ids])
+        msta_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSTA_score.append(sum(msta_partial_score))
+        partial_score.append((msa_partial_score, msta_partial_score))
+
+    return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
+
+def calculate_dirp_score_begstats(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
+    """sum method, v1.0
+    the 4 scores are
+    I: avg evolutionary conservation (positive)
+    II: ligands alignment conservation (negative)
+    III: avg ligand-receptor max coevolution (positive)
+    IV: avg ligand-ligand max coevolution (negative)
+
+    the 4 scores will be weighted by a parameter each, by default 0.25, and summed to compose the final score
+
+    returns:
+    average MSA,MSTA dirp score array = a(I) + b(1-II) + c(III) + d(1-IV)
+    partial scores array = same as before but comma instead of sum, and (MSAps,MSTAps)
+    """
+
+    # apply quantile
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+
+    def begstat_normalize(df):
+        """
+        input: dataframe with numerical columns
+        output: divide by mean score, multiply by 0.5
+        """
+        new_df = df.copy()
+        for c in df.columns:
+            new_df[c] = (df[c] - df[c].mean()) / df[c].std()
+        return new_df
+
+    begstat_df = begstat_normalize(df[numeric_cols])
+
+    for c in begstat_df:
+        df[c] = begstat_df[c]
+    a,b,c,d = abcd
+    MSA_score = []
+    MSTA_score = []
+    partial_score = []
+
+    for i,r in df.iterrows():
+        # msa
+        I,II,III,IV = list(r[msa_ids])
+        msa_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSA_score.append(sum(msa_partial_score))
+        # msta
+        I,II,III,IV = list(r[msta_ids])
+        msta_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSTA_score.append(sum(msta_partial_score))
+        partial_score.append((msa_partial_score, msta_partial_score))
+
+    return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
+
 
 
 def average_score(d,alg_type):

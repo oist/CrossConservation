@@ -92,7 +92,6 @@ class ConScores:
         :param ref:
         :return:
         """
-        Mb,mb = max(blosum62.values()), min(blosum62.values())
 
         out = []
         reflen = len(msa.loc[ref])
@@ -103,6 +102,8 @@ class ConScores:
             reference_res = str(msa.iloc[:, i].loc[ref])
 
             if reference_res not in "-.":
+                Mb, mb = max([v for k, v in blosum62.items() if reference_res in k]), min(
+                    [v for k, v in blosum62.items() if reference_res in k])  # now min and max is residue specific
                 this_score = 0 # - blosum62[(reference_res, reference_res)]  # starts in debt to cover self reference hit
                 for res in res_list:
                     if res not in "-.":
