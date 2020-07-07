@@ -1,0 +1,16 @@
+--input-file
+/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_git/data/input_files/egf_run_inputfile.txt
+--output-path
+/Users/stefanopascarelli/Desktop/work/PHD/projects/post_rej_CROSSCONS/script_rererun/cc_out/dirp_v1_MIp_id6633
+--test-type
+DIRP
+--concon-reference
+EGF
+--conservation-test
+blos
+--alignment-test
+blos
+--coevolution-test
+MIp
+--abcd
+6,6,3,3

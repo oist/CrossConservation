@@ -14,7 +14,7 @@ from sklearn.decomposition import PCA as sklearnPCA
 import matplotlib.cm as cm
 import matplotlib
 from scipy.stats import zscore
-
+import json
 def read_input_file(args):
     """
     this function is to parse and read the input file.
@@ -792,6 +792,8 @@ def main(argv):
     o = args.output_path
     if not os.path.exists(o):
         os.makedirs(o)
+        with open('{}/args.txt'.format(o), 'w') as f:
+            json.dump(args.__dict__, f, indent=2)
         logging.warning("~~~\nCREATING OUTPUT FOLDER at {}\n~~~".format(o))
 
     # CONSERVATION check
