@@ -202,6 +202,16 @@ def dir_prediction(args):
 
 def makeplots(cs, args):
 
+    relabel_cols = {
+      "EVO cons MSA": "Evolutionary conservation",
+        "EVO cons MSTA": "Evolutionary conservation",
+        "MSA": "Paralogs conservation",
+        "MSTA": "Paralogs conservation",
+        "COEVO receptor MSA":"Ligand-Receptor co-evolution",
+        "COEVO receptor MSTA":"Ligand-Receptor co-evolution",
+        "COEVO ligands MSA":"Ligands internal co-evolution",
+        "COEVO ligands MSTA":"Ligands internal co-evolution"
+    }
     # plots folder
     plot_output = args.output_path + "/plots/"
     if not os.path.exists(plot_output):
@@ -216,6 +226,9 @@ def makeplots(cs, args):
     df_dist['type'] = ["MSA" if "MSA" in x else "MSTA" for x in df_dist['rows']]
     df_dist['rows'] = [" ".join(x.split(" ")[:-1]) if len(x) > 4 else "Ligands alignment" for x in df_dist['rows']]
 
+    # rename
+    df_dist = df_dist.rename(columns=relabel_cols)
+
     # plot distributions
     g = sb.FacetGrid(df_dist, row='rows', col='type', hue='rows')
     g = (g.map(sb.distplot, 'value', hist=False, rug=True)).set_titles("{col_name} | {row_name}")
@@ -223,6 +236,7 @@ def makeplots(cs, args):
     plt.close()
 
     # stacked box plot
+    matplotlib.rcParams.update({'font.size': 10})
     # format data
     ilab = [args.msa_cols, args.msta_cols]
     df_stack = cs[['POS', 'partial scores']].copy()
@@ -233,18 +247,21 @@ def makeplots(cs, args):
                 this_col.append(x[laidx][idx])
             df_stack["{}".format(ilab[laidx][idx])] = this_col
     del (df_stack['partial scores'])
+    #rename
+    df_msa = df_stack[args.msa_cols].rename(columns={k:v for k,v in relabel_cols.items() if k in args.msa_cols})
+    df_msta = df_stack[args.msta_cols].rename(columns={k:v for k,v in relabel_cols.items() if k in args.msta_cols})
     # figure out how to do this
     fig, axes = plt.subplots(2, 1, figsize=(12, 24))
-    df_stack[args.msa_cols].iloc[::-1].plot.barh(stacked=True,ax=axes[0])
+    df_msa.iloc[::-1].plot.barh(stacked=True,ax=axes[0])
     axes[0].set_yticklabels(cs['POS'][::-1])
-    axes[0].set_title('MSA')
-    df_stack[args.msta_cols].iloc[::-1].plot.barh(stacked=True,ax=axes[1])
+    axes[0].set_title('MSA',fontsize=24)
+    df_msta.iloc[::-1].plot.barh(stacked=True,ax=axes[1],legend=False)
     axes[1].set_yticklabels(cs['POS'][::-1])
-    axes[1].set_title('MSTA')
-    # removed is for long form pd dataframe
-    # df_stack = df_stack.melt(var_name='rows', value_vars=args.msa_cols + args.msta_cols, id_vars='POS')
-    # df_stack['type'] = ["MSA" if "MSA" in x else "MSTA" for x in df_stack['rows']]
-    # df_stack['rows'] = [" ".join(x.split(" ")[:-1]) if len(x) > 4 else "Ligands alignment" for x in df_stack['rows']]
+    axes[1].set_title('MSTA',fontsize=24)
+
+    # handle legends
+    patches, labels = axes[0].get_legend_handles_labels()
+    axes[0].legend(patches,labels,bbox_to_anchor=(0.45,-0.08),ncol=2,loc="center", prop={'size': 18})
     plt.savefig("{}/combined_score.png".format(plot_output), dpi=400)
     plt.close()
 
@@ -255,20 +272,43 @@ def makeplots(cs, args):
     msa_sort = msa_sort.sort_values(by=['sum'])
     del(msa_sort['sum'])
     msa_lab = msa_sort.pop('POS')
+    msa_sort = msa_sort.rename(columns=relabel_cols)
     msa_sort.plot.barh(stacked=True,ax=axes[0])
     axes[0].set_yticklabels(msa_lab)
-    axes[0].set_title('MSA')
+    axes[0].set_title('MSA',fontsize=32)
     #msta
     msta_sort = df_stack[args.msta_cols + ["POS"]].copy()
     msta_sort["sum"] = msta_sort[args.msta_cols].sum(axis=1)
     msta_sort = msta_sort.sort_values(by=['sum'])
     del(msta_sort['sum'])
     msta_lab = msta_sort.pop('POS')
-    msta_sort.plot.barh(stacked=True,ax=axes[1])
+    msta_sort.plot.barh(stacked=True,ax=axes[1],legend=False)
     axes[1].set_yticklabels(msta_lab)
-    axes[1].set_title('MSTA')
+    axes[1].set_title('MSTA',fontsize=32)
+    # handle legends
+    patches, labels = axes[0].get_legend_handles_labels()
+    axes[0].legend(patches,labels,bbox_to_anchor=(0.45,-0.08),ncol=2,loc="center", prop={'size': 18})
+
     plt.savefig("{}/combined_score_sorted.png".format(plot_output), dpi=400)
     plt.close()
+
+    # save top 12
+    matplotlib.rcParams.update({'font.size': 18})
+    fig, axes = plt.subplots(2, 1, figsize=(12, 24))
+    msa_sort.tail(12).plot.barh(stacked=True,ax=axes[0])
+    axes[0].set_yticklabels(msa_lab[-12:])
+    axes[0].set_title('MSA',fontsize=32)
+    msta_sort.tail(12).plot.barh(stacked=True,ax=axes[1],legend=False)
+    axes[1].set_yticklabels(msta_lab[-12:])
+    axes[1].set_title('MSTA',fontsize=32)
+    # handle legends
+    patches, labels = axes[0].get_legend_handles_labels()
+    axes[0].legend(patches,labels,bbox_to_anchor=(0.45,-0.09),ncol=2,loc="center", prop={'size': 18})
+
+    plt.savefig("{}/combined_score_sorted_top12.png".format(plot_output), dpi=400)
+    plt.close()
+
+
     # save text output also but add average
     #index plus one
     cs.index = cs.index + 1
