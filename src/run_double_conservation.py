@@ -361,6 +361,40 @@ def calculate_dirp_score(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
 
     return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
 
+def calculate_dirp_score_double_diag(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
+    """sum method, v1.0
+    the 4 scores are
+    I: avg evolutionary conservation (positive)
+    II: ligands alignment conservation (negative)
+    III: avg ligand-receptor max coevolution (positive)
+    IV: avg ligand-ligand max coevolution (negative)
+
+    the 4 scores will be divided in 2 groups, conservation and coevolution
+    then the distance from the diagonal will be taken for the two scores, normalized 0 to 0.5 and summed
+
+    returns:
+    average MSA,MSTA dirp score array = a(I) + b(1-II) + c(III) + d(1-IV)
+    partial scores array = same as before but comma instead of sum, and (MSAps,MSTAps)
+    """
+
+    a,b,c,d = abcd
+    MSA_score = []
+    MSTA_score = []
+    partial_score = []
+
+    for i,r in df.iterrows():
+        # msa
+        I,II,III,IV = list(r[msa_ids])
+        msa_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSA_score.append(((I-II)/np.sqrt(2) + (III-IV)/np.sqrt(2))/2)
+        # msta
+        I,II,III,IV = list(r[msta_ids])
+        msta_partial_score = a * I, b * (1-II), c * III, d * (1 - IV)
+        MSTA_score.append(((I-II)/np.sqrt(2) + (III-IV)/np.sqrt(2))/2)
+        partial_score.append((msa_partial_score, msta_partial_score))
+
+    return np.mean([MSA_score, MSTA_score], axis=0).round(2), partial_score
+
 def calculate_dirp_score_double(df, msa_ids, msta_ids, abcd=(0.25,0.25,0.25,0.25)):
     """sum method, v1.0
     the 4 scores are
